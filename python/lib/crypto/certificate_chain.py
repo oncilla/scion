@@ -50,7 +50,7 @@ def verify_sig_chain_trc(msg, sig, subject, chain, trc):
     :param bytes sig: signature computed on msg.
     :param ISD_AS subject: signer identity.
     :param CertificateChain chain: Certificate chain containing the signing entity's certificate.
-    :param TRC trc: Issuing TRC containing all root of trust certificates for one ISD.
+    :param TRC trc: Issuing and active TRC containing all root of trust certificates for one ISD.
 
     :raises: SCIONVerificationError if the verification fails.
     """

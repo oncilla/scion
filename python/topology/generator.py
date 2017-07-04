@@ -402,10 +402,14 @@ class CertGenerator(object):
         trc.root_cas = ca_certs
 
     def _create_trc(self, isd):
-        self.trcs[isd] = TRC.from_values(
+        val_period = TRC.VALIDITY_PERIOD
+        trc = TRC.from_values(
             isd, "ISD %s" % isd, 0, {}, {},
             {}, 2, 'dns_srv_addr', 2,
-            3, 18000, True, {})
+            3, 18000, val_period, False, {})
+        trc.create_time -= trc.grace_period
+        trc.exp_time = trc.create_time + val_period
+        self.trcs[isd] = trc
 
     def _sign_trc(self, topo_id, as_conf):
         if not as_conf.get('core', False):

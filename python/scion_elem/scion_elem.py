@@ -147,6 +147,8 @@ class SCIONElement(object):
     USE_TCP = False
     # Timeout for TRC or Certificate requests.
     TRC_CC_REQ_TIMEOUT = 3
+    MAX_UNV_TRCS = 1000
+    UNV_TRC_TTL = 10
 
     def __init__(self, server_id, conf_dir, public=None, bind=None, prom_export=None):
         """
@@ -206,6 +208,8 @@ class SCIONElement(object):
         self.req_trcs_lock = threading.Lock()
         self.requested_certs = {}
         self.req_certs_lock = threading.Lock()
+        self.unverified_trcs = ExpiringDict(self.MAX_UNV_TRCS, self.UNV_TRC_TTL)
+        self.unv_trcs_lock = threading.Lock()
         # TODO(jonghoonkwon): Fix me to setup sockets for multiple public addresses
         host_addr, self._port = self.public[0]
         self.addr = SCIONAddr.from_values(self.topology.isd_as, host_addr)
@@ -287,7 +291,9 @@ class SCIONElement(object):
         When a new trc is received, this function is called to
         update the core ases map
         """
-        self._core_ases[trc.isd] = trc.get_core_ases()
+        max_trc = self.trust_store.get_trc(trc.isd)
+        if max_trc.version == trc.version:
+            self._core_ases[trc.isd] = trc.get_core_ases()
 
     def get_border_addr(self, ifid):
         br = self.ifid2br[ifid]
@@ -542,29 +548,101 @@ class SCIONElement(object):
 
     def process_trc_reply(self, rep, meta):
         """
-        Process the TRC reply.
-        :param rep: TRC reply.
-        :type rep: TRCReply.
+        Process TRC reply.
+
+        :param TRCReply rep: the TRC reply.
+        :param UDPMetadata meta: the meta data.
+        :returns: if TRC was added to TrustStore.
+        :rtype: bool
         """
-        meta.close()
+        share = False
+        if meta:
+            meta.close()
+            share = meta.get_addr().isd_as != self.addr.isd_as  # avoid circular sharing
         isd, ver = rep.trc.get_isd_ver()
         logging.info("TRC reply received for %sv%s from %s" % (isd, ver, meta))
-        self.trust_store.add_trc(rep.trc, True)
-        # Update core ases for isd this trc belongs to
-        max_local_ver = self.trust_store.get_trc(rep.trc.isd)
-        if max_local_ver.version == rep.trc.version:
-            self._update_core_ases(rep.trc)
+        local = isd == self.addr.isd_as[0]
+        if local and not self._handle_local_trc(rep.trc, share):
+            return
+        elif not local and not self._handle_remote_trc(rep.trc, share):
+            return
         with self.req_trcs_lock:
             self.requested_trcs.pop((isd, ver), None)
             if self._labels:
                 PENDING_TRC_REQS_TOTAL.labels(**self._labels).set(len(self.requested_trcs))
-        # Send trc to CS
-        if meta.get_addr().isd_as != self.addr.isd_as:
-            cs_meta = self._get_cs()
-            self.send_meta(rep, cs_meta)
-            cs_meta.close()
-        # Remove received TRC from map
+        # Check if segment is verifiable
         self._check_segs_with_rec_trc(isd, ver)
+
+    def _handle_local_trc(self, trc, share):
+        """
+        Handle TRC of local ISD.
+
+        :param TRC trc: the received TRC.
+        :param bool share: share verifiable TRC with CS.
+        :returns: if TRC was added to the TrustStore.
+        :rtype: bool
+        """
+        isd, ver = trc.get_isd_ver()
+        max_trc = self.trust_store.get_trc(isd)
+        if ver > max_trc.version + 1:
+            # Trust chain cannot be verified at this point in time.
+            with self.unv_trcs_lock:
+                dep_trcs = self.unv_trcs_lock.get((isd, ver - 1), dict())
+                if not dep_trcs:
+                    self.unverified_trcs[(isd, ver - 1)] = dep_trcs
+                dep_trcs[trc.get_isd_ver()] = trc
+            # Subsequent requests will handle cases where trust anchor has been added
+            # between if and lock acquirement.
+            return False
+        if ver <= max_trc.version:
+            return False  # TRC has to be already in the TrustStore.
+        try:
+            trc.verify(max_trc)
+        except SCIONVerificationError as e:
+            logging.warning("TRC verification for %sv%s failed. Reason: %s", isd, ver, e)
+            return False
+        self._add_trc(trc, share)
+        self._check_unverified_trcs(trc, share)
+        return True
+
+    def _handle_remote_trc(self, trc, share):
+        """
+        Handle TRC of remote ISD.
+
+        :param TRC trc: the received TRC.
+        :param bool share: share verifiable TRC with CS.
+        :returns: if TRC was added to the TrustStore.
+        :rtype: bool
+        """
+        self._add_trc(trc, share)
+        return True
+
+    def _check_unverified_trcs(self, trusted, share):
+        with self.unv_trcs_lock:
+            verified = [trusted]
+            while verified:
+                trusted = verified.pop()
+                dep_trcs = self.unverified_trcs.pop(trusted.get_isd_ver(), None)
+                if not dep_trcs:
+                    continue
+                for trc in dep_trcs.values():
+                    try:
+                        trc.verify(trusted)
+                    except SCIONVerificationError as e:
+                        logging.warning("TRC verification for %sv%s failed. Reason: %s",
+                                        *trc.get_isd_ver(), e)
+                        continue
+                    self._add_trc(trc, share)
+                    verified.append(trc)
+
+    def _add_trc(self, trc, share):
+        logging.info("TRC %sv%s added.", *trc.get_isd_ver())
+        self.trust_store.add_trc(trc)
+        self._update_core_ases(trc)
+        if share:
+            cs_meta = self._get_cs()
+            self.send_meta(TRCReply.from_values(trc), cs_meta)
+            cs_meta.close()
 
     def _check_segs_with_rec_trc(self, isd, ver):
         """
@@ -594,21 +672,51 @@ class SCIONElement(object):
     def process_cert_chain_reply(self, rep, meta):
         """Process a certificate chain reply."""
         assert isinstance(rep, CertChainReply)
-        meta.close()
+        share = False
+        if meta:
+            meta.close()
+            share = meta.get_addr().isd_as != self.addr.isd_as  # avoid circular sharing
         isd_as, ver = rep.chain.get_leaf_isd_as_ver()
-        logging.info("Cert chain reply received for %sv%s from %s" % (isd_as, ver, meta))
+        logging.info("CertificateChain reply received for %sv%s from %s" % (isd_as, ver, meta))
+        try:
+            self._verify_cert_chain(rep.chain, isd_as)
+        except SCIONVerificationError as e:
+            logging.error("CertificateChain for %sv%s invalid from %s. Reason: %s" % (
+                isd_as, ver, meta, e))
+            return
         self.trust_store.add_cert(rep.chain, True)
         with self.req_certs_lock:
             self.requested_certs.pop((isd_as, ver), None)
             if self._labels:
                 PENDING_CERT_REQS_TOTAL.labels(**self._labels).set(len(self.requested_certs))
-        # Send cc to CS
-        if meta.get_addr().isd_as != self.addr.isd_as:
+        # Send CertChain to CS
+        if share:
             cs_meta = self._get_cs()
             self.send_meta(rep, cs_meta)
             cs_meta.close()
-        # Remove received cert chain from map
+        # Remove received CertChain from map
         self._check_segs_with_rec_cert(isd_as, ver)
+
+    def _verify_cert_chain(self, cert_chain, isd_as):
+        trc = self.trust_store.get_trc(isd_as[0])
+        # Verify CertChain against newest TRC
+        if not trc:
+            raise SCIONVerificationError("No TRC for ISD %s present" % isd_as[0])
+        try:
+            err = None
+            trc.check_active()
+            cert_chain.verify(str(isd_as), trc)
+        except SCIONVerificationError as e:
+            err = e
+        if not err:
+            return
+        # Check if old TRC in grace period
+        old_trc = self.trust_store.get_trc(trc.isd, trc.version - 1)
+        if not old_trc:
+            raise err
+        old_trc.check_active(trc)
+        cert_chain.verify(str(isd_as), old_trc)
+        logging.debug("Cert chain for %sv%s valid in grace period.")
 
     def _check_segs_with_rec_cert(self, isd_as, ver):
         """
@@ -647,8 +755,10 @@ class SCIONElement(object):
         for asm in seg.iter_asms():
             cert_ia = asm.isd_as()
             trc = self.trust_store.get_trc(cert_ia[0], asm.p.trcVer)
+            max_trc = self.trust_store.get_trc(cert_ia[0])
             chain = self.trust_store.get_cert(asm.isd_as(), asm.p.certVer)
             ver_seg.add_asm(asm)
+            trc.check_active(max_trc)
             verify_sig_chain_trc(ver_seg.sig_pack3(), asm.p.sig, cert_ia, chain, trc)
 
     def _get_handler(self, pkt):

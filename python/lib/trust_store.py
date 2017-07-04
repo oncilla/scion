@@ -20,6 +20,7 @@ from collections import defaultdict
 import glob
 import logging
 import os
+import re
 import threading
 
 # External packages
@@ -29,6 +30,7 @@ from prometheus_client import Gauge
 from lib.crypto.certificate_chain import CertificateChain
 from lib.crypto.trc import TRC
 from lib.crypto.util import CERT_DIR
+from lib.packet.scion_addr import ISD_AS
 from lib.util import read_file, write_file
 
 
@@ -80,6 +82,52 @@ class TrustStore(object):
             cert_raw = read_file(path)
             self.add_cert(CertificateChain.from_raw(cert_raw), write=False)
             logging.debug("Loaded: %s" % path)
+
+    def _reload_trcs(self):
+        """
+        Load TRCs which are on filesystem and not in memory.
+
+        :returns: list of newly loaded TRCs
+        :rtype [TRC]
+        """
+        trcs = []
+        for path in glob.glob("%s/*.trc" % self._dir):
+            file_name = os.path.basename(os.path.normpath(path))
+            isd, version = (int(x) for x in re.findall("\d+", file_name))
+            with self._trcs_lock:
+                for ver, _ in self._trcs[isd]:
+                    if version == ver:
+                        break
+                else:
+                    trc = TRC.from_raw(read_file(path))
+                    trcs.append(trc)
+                    self._trcs[isd].append((version, trc))
+        return trcs
+
+    def _reload_certs(self):
+        """
+        Load CertificateChains which are on filesystem and not in memory.
+
+        :returns: list of newly loaded CertificateChains
+        :rtype [CertificateChain]
+        """
+        certs = []
+        for path in glob.glob("%s/*.crt" % self._dir):
+            file_name = os.path.basename(os.path.normpath(path))
+            isd, as_, version = (int(x) for x in re.findall("\d+", file_name))
+            isd_as = ISD_AS.from_values(isd, as_)
+            with self._certs_lock:
+                for ver, _ in self._certs[isd_as]:
+                    if version == ver:
+                        break
+                else:
+                    cert = CertificateChain.from_raw(read_file(path))
+                    certs.append(cert)
+                    self._certs[isd_as].append((version, cert))
+        return certs
+
+    def reload(self):
+        return self._reload_trcs(), self._reload_certs()
 
     def get_trc(self, isd, version=None):
         with self._trcs_lock:

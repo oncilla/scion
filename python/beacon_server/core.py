@@ -17,18 +17,21 @@
 """
 # Stdlib
 import logging
+import threading
 from collections import defaultdict
 
 # SCION
 from beacon_server.base import BeaconServer, BEACONS_PROPAGATED
 from lib.defines import PATH_SERVICE, SIBRA_SERVICE
 from lib.errors import SCIONServiceLookupError
+from lib.packet.cert_mgmt import TRCRequest
 from lib.packet.opaque_field import InfoOpaqueField
 from lib.packet.path_mgmt.seg_recs import PathRecordsReg
 from lib.packet.pcb import PathSegment
 from lib.path_store import PathStore
+from lib.thread import thread_safety_net
 from lib.types import PathSegmentType as PST
-from lib.util import SCIONTime
+from lib.util import SCIONTime, sleep_interval
 
 
 class CoreBeaconServer(BeaconServer):
@@ -199,3 +202,23 @@ class CoreBeaconServer(BeaconServer):
             # Remove the affected segments from the path stores.
             for ps in self.core_beacons.values():
                 ps.remove_segments(to_remove)
+
+    def _fetch_successor_trc(self):
+        worker_cycle = 1.0
+        start = SCIONTime.get_time()
+        while self.run_flag.is_set():
+            sleep_interval(start, worker_cycle, "Request successor TRC",
+                           self._quiet_startup())
+            start = SCIONTime.get_time()
+            ver = self.trust_store.get_trc(self.addr.isd_as[0]).version
+            req = TRCRequest.from_values(self.addr.isd_as, ver+1, cache_only=True)
+            cs_meta = self._get_cs()
+            self.send_meta(req, cs_meta)
+            cs_meta.close()
+
+    def run(self):
+        """"""
+        threading.Thread(
+            target=thread_safety_net, args=(self._fetch_successor_trc,),
+            name="BS._fetch_successor_trc", daemon=True).start()
+        super().run()

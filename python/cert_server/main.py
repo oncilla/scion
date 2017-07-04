@@ -19,6 +19,8 @@
 # Stdlib
 import datetime
 import logging
+import os
+import signal
 import threading
 
 # External packages
@@ -153,6 +155,7 @@ class CertServer(SCIONElement):
         self.private_key = get_enc_key(self.conf_dir)
         self.drkey_secrets = ExpiringDict(DRKEY_MAX_SV, DRKEY_MAX_TTL)
         self.first_order_drkeys = ExpiringDict(DRKEY_MAX_KEYS, DRKEY_MAX_TTL)
+        signal.signal(signal.SIGHUP, self.sighup_handler)
 
     def worker(self):
         """
@@ -315,20 +318,19 @@ class CertServer(SCIONElement):
 
     def process_trc_reply(self, trc_rep, meta, from_zk=False):
         """
-        Process a TRC reply.
+        Process TRC reply.
 
-        :param trc_rep: TRC reply.
-        :type trc_rep: TRCReply
+        :param TRCReply trc_rep: the TRC reply.
+        :param UDPMetadata meta: the meta data.
+        :param bool from_zk: received from ZK.
         """
-        assert isinstance(trc_rep, TRCReply)
-        isd, ver = trc_rep.trc.get_isd_ver()
-        logging.info("TRCReply received for ISD %sv%s, ZK: %s",
-                     isd, ver, from_zk)
-        self.trust_store.add_trc(trc_rep.trc)
+
+        super().process_trc_reply(trc_rep, meta)
         if not from_zk:
             self._share_object(trc_rep.trc, is_trc=True)
-        # Reply to all requests for this TRC
-        self.trc_requests.put(((isd, ver), None))
+        if self.trust_store.get_trc(*trc_rep.trc.get_isd_ver()):
+            # Reply to all requests for this TRC (if TRC is verified)
+            self.trc_requests.put((trc_rep.trc.get_isd_ver(), None))
 
     def _check_trc(self, key):
         trc = self.trust_store.get_trc(*key)
@@ -415,10 +417,8 @@ class CertServer(SCIONElement):
         if err:
             raise SCIONVerificationError(", ".join(err))
         raw = drkey_signing_input_req(req.isd_as, req.p.flags.prefetch, req.p.timestamp)
-        try:
-            verify_sig_chain_trc(raw, req.p.signature, meta.ia, chain, trc)
-        except SCIONVerificationError as e:
-            raise SCIONVerificationError(str(e))
+        trc.check_active()
+        verify_sig_chain_trc(raw, req.p.signature, meta.ia, chain, trc)
         return chain.certs[0]
 
     def process_drkey_reply(self, rep, meta, from_zk=False):
@@ -484,10 +484,8 @@ class CertServer(SCIONElement):
         if err:
             raise SCIONVerificationError(", ".join(err))
         raw = get_signing_input_rep(rep.isd_as, rep.p.timestamp, rep.p.expTime, rep.p.cipher)
-        try:
-            verify_sig_chain_trc(raw, rep.p.signature, rep.isd_as, chain, trc)
-        except SCIONVerificationError as e:
-            raise SCIONVerificationError(str(e))
+        trc.check_active()
+        verify_sig_chain_trc(raw, rep.p.signature, rep.isd_as, chain, trc)
         return chain.certs[0]
 
     def _check_drkey(self, drkey):
@@ -547,6 +545,14 @@ class CertServer(SCIONElement):
         for type_ in ("trc", "cc", "drkey"):
             REQS_TOTAL.labels(**self._labels, type=type_).inc(0)
         IS_MASTER.labels(**self._labels).set(0)
+
+    def sighup_handler(self, signum, frame):
+        trcs, certs = self.trust_store.reload()
+        logging.debug("Reloaded %s TRCs and %s CertChains.", len(trcs), len(certs))
+        for trc in trcs:
+            self._share_object(trc, is_trc=True)
+        for cert in certs:
+            self._share_object(cert, is_trc=False)
 
     def run(self):
         """
