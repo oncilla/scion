@@ -254,16 +254,21 @@ class CertServer(SCIONElement):
         self._reply_cc(key, (meta, req))
 
     def process_cert_chain_reply(self, rep, meta, from_zk=False):
-        """Process a certificate chain reply."""
-        assert isinstance(rep, CertChainReply)
+        """
+        Process a certificate chain reply.
+
+        :param CertChainReply rep: the cert chain reply.
+        :param UDPMetadata meta: the meta data.
+        :param bool from_zk: received from ZK.
+        """
+
         ia_ver = rep.chain.get_leaf_isd_as_ver()
-        logging.info("Cert chain reply received for %sv%s (ZK: %s)" %
-                     (ia_ver[0], ia_ver[1], from_zk))
-        self.trust_store.add_cert(rep.chain)
+        super().process_cert_chain_reply(rep, meta, share=False)
         if not from_zk:
             self._share_object(rep.chain, is_trc=False)
-        # Reply to all requests for this certificate chain
-        self.cc_requests.put((ia_ver, None))
+        if self.trust_store.get_cert(*ia_ver):
+            # Reply to all requests for verified certificate chain
+            self.cc_requests.put((ia_ver, None))
 
     def _check_cc(self, key):
         cert_chain = self.trust_store.get_cert(*key)
@@ -325,7 +330,7 @@ class CertServer(SCIONElement):
         :param bool from_zk: received from ZK.
         """
 
-        super().process_trc_reply(trc_rep, meta)
+        super().process_trc_reply(trc_rep, meta, share=False)
         if not from_zk:
             self._share_object(trc_rep.trc, is_trc=True)
         if self.trust_store.get_trc(*trc_rep.trc.get_isd_ver()):

@@ -546,26 +546,27 @@ class SCIONElement(object):
                     missing_certs.add((isd_as, ver))
         return missing_certs
 
-    def process_trc_reply(self, rep, meta):
+    def process_trc_reply(self, rep, meta, share=True):
         """
         Process TRC reply.
 
         :param TRCReply rep: the TRC reply.
         :param UDPMetadata meta: the meta data.
+        :param bool share: should verifiable TRC be shared with CS
         :returns: if TRC was added to TrustStore.
         :rtype: bool
         """
-        share = False
         if meta:
             meta.close()
-            share = meta.get_addr().isd_as != self.addr.isd_as  # avoid circular sharing
+            share &= meta.get_addr().isd_as != self.addr.isd_as  # avoid circular sharing
         isd, ver = rep.trc.get_isd_ver()
         logging.info("TRC reply received for %sv%s from %s" % (isd, ver, meta))
-        local = isd == self.addr.isd_as[0]
-        if local and not self._handle_local_trc(rep.trc, share):
-            return
-        elif not local and not self._handle_remote_trc(rep.trc, share):
-            return
+        if isd == self.addr.isd_as[0]:
+            if not self._handle_local_trc(rep.trc, share):
+                return
+        else:
+            if not self._handle_remote_trc(rep.trc, share):
+                return
         with self.req_trcs_lock:
             self.requested_trcs.pop((isd, ver), None)
             if self._labels:
@@ -669,13 +670,12 @@ class SCIONElement(object):
         else:
             logging.warning("Could not find requested TRC %sv%s" % (isd, ver))
 
-    def process_cert_chain_reply(self, rep, meta):
+    def process_cert_chain_reply(self, rep, meta, share=True):
         """Process a certificate chain reply."""
         assert isinstance(rep, CertChainReply)
-        share = False
         if meta:
             meta.close()
-            share = meta.get_addr().isd_as != self.addr.isd_as  # avoid circular sharing
+            share &= meta.get_addr().isd_as != self.addr.isd_as  # avoid circular sharing
         isd_as, ver = rep.chain.get_leaf_isd_as_ver()
         logging.info("CertificateChain reply received for %sv%s from %s" % (isd_as, ver, meta))
         try:
@@ -701,6 +701,7 @@ class SCIONElement(object):
         trc = self.trust_store.get_trc(isd_as[0])
         # Verify CertChain against newest TRC
         if not trc:
+            # TODO(roosd): fetch missing TRC
             raise SCIONVerificationError("No TRC for ISD %s present" % isd_as[0])
         try:
             err = None

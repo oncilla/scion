@@ -121,7 +121,7 @@ class TestUpdatedCertClient(TestCertClient):
 
 
 class TestUpdatedCertReq(TestCertReq):
-    NAME = "UpdatedCertReqTest"
+    NAME = "UpdatedTRCReqTest"
 
     def __init__(self, client, server, sources, destinations, local=True,
                  max_runs=None, retries=0, trc_version=0):

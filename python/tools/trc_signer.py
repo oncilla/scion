@@ -43,7 +43,7 @@ def sign_trc(conf_dir, infile, outfile):
     :param String outfile: path where signed TRC is written to.
     """
     topology = Topology.from_file(os.path.join(conf_dir, TOPO_FILE))
-    sign_key = SigningKey(base64.b64decode(read_file(get_online_key_file_path(conf_dir))))
+    sign_key = base64.b64decode(read_file(get_online_key_file_path(conf_dir)))
     trc = TRC.from_raw(read_file(infile))
     trc.sign(str(topology.isd_as), sign_key)  # FIXME(roosd): remove str() when PR1144 is merged
     write_file(outfile, str(trc))
