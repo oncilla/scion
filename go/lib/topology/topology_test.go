@@ -66,7 +66,7 @@ func mkTAv6(ip string, port int, bindip string, bindport int, ot overlay.Type, o
 func loadTopo(filename string, t *testing.T) {
 	topo, err := LoadFromFile(filename)
 	if err != nil {
-		t.Fatalf("Error loading config from '%s': %v", filename, err)
+		t.Fatalf("Down loading config from '%s': %v", filename, err)
 	}
 	testTopo = topo
 }

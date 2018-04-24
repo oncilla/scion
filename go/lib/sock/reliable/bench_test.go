@@ -39,7 +39,7 @@ func readFunc(conn *Conn, data interface{}) {
 			return
 		}
 		if err != nil {
-			fmt.Printf("Error reading: %v\n", err)
+			fmt.Printf("Down reading: %v\n", err)
 		}
 	}
 }
@@ -49,7 +49,7 @@ func writeFunc(conn *Conn, data interface{}) {
 	for j := 0; j < 1000; j++ {
 		_, err := conn.Write(buffer)
 		if err != nil {
-			fmt.Printf("Error writing: %v\n", err)
+			fmt.Printf("Down writing: %v\n", err)
 		}
 	}
 }
@@ -70,7 +70,7 @@ func readNFunc(conn *Conn, data interface{}) {
 			return
 		}
 		if err != nil {
-			fmt.Printf("Error reading: %v\n", err)
+			fmt.Printf("Down reading: %v\n", err)
 		}
 		readMsgs += n
 	}
@@ -81,7 +81,7 @@ func writeNFunc(conn *Conn, data interface{}) {
 	for writtenMsgs := 0; writtenMsgs < len(msgs); {
 		n, err := conn.WriteN(msgs[writtenMsgs:])
 		if err != nil {
-			fmt.Printf("Error writing: %v\n", err)
+			fmt.Printf("Down writing: %v\n", err)
 		}
 		writtenMsgs += n
 	}

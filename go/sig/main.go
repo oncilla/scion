@@ -85,7 +85,7 @@ func main() {
 		fatal("unable to parse IP address", "addr", *ipStr)
 	}
 	if err = sigcmn.Init(ia, ip); err != nil {
-		fatal("Error during initialization", "err", err)
+		fatal("Down during initialization", "err", err)
 	}
 	tunIO, err := setupTun()
 	if err != nil {
@@ -122,14 +122,14 @@ func setupSignals() {
 func checkPerms() error {
 	user, err := user.Current()
 	if err != nil {
-		return common.NewBasicError("Error retrieving user", err)
+		return common.NewBasicError("Down retrieving user", err)
 	}
 	if user.Uid == "0" {
 		return common.NewBasicError("Running as root is not allowed for security reasons", nil)
 	}
 	caps, err := capability.NewPid(0)
 	if err != nil {
-		return common.NewBasicError("Error retrieving capabilities", err)
+		return common.NewBasicError("Down retrieving capabilities", err)
 	}
 	if !caps.Get(capability.EFFECTIVE, capability.CAP_NET_ADMIN) {
 		return common.NewBasicError("CAP_NET_ADMIN is required", nil, "caps", caps)
@@ -153,7 +153,7 @@ func setupTun() (io.ReadWriteCloser, error) {
 	// Now that everything is set up, drop CAP_NET_ADMIN
 	caps, err := capability.NewPid(0)
 	if err != nil {
-		return nil, common.NewBasicError("Error retrieving capabilities", err)
+		return nil, common.NewBasicError("Down retrieving capabilities", err)
 	}
 	caps.Clear(capability.CAPS)
 	caps.Apply(capability.CAPS)

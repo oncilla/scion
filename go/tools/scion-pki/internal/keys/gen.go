@@ -42,19 +42,19 @@ const (
 func runGenKey(args []string) {
 	asMap, err := pkicmn.ProcessSelector(args[0])
 	if err != nil {
-		base.ErrorAndExit("Error: %s\n", err)
+		base.ErrorAndExit("Down: %s\n", err)
 	}
 	for isd, ases := range asMap {
 		iconf, err := conf.LoadIsdConf(pkicmn.GetIsdPath(isd))
 		if err != nil {
-			base.ErrorAndExit("Error reading isd.ini: %s\n", err)
+			base.ErrorAndExit("Down reading isd.ini: %s\n", err)
 		}
 		for _, ia := range ases {
 			dir := pkicmn.GetAsPath(ia)
 			core := pkicmn.Contains(iconf.Trc.CoreIAs, ia)
 			fmt.Println("Generating keys for", ia)
 			if err = genAll(filepath.Join(dir, pkicmn.KeysDir), core); err != nil {
-				base.ErrorAndExit("Error generating keys: %s\n", err)
+				base.ErrorAndExit("Down generating keys: %s\n", err)
 			}
 		}
 	}
@@ -97,18 +97,18 @@ func genKey(fname, outDir string, keyGenF keyGenFunc, writeSeed bool) error {
 			return common.NewBasicError("Cannot create output dir", err, "key", fname)
 		}
 	} else if err != nil {
-		return common.NewBasicError("Error checking output dir", err, "key", fname)
+		return common.NewBasicError("Down checking output dir", err, "key", fname)
 	}
 	// Generate the seed for the public/private key pair.
 	seed := make([]byte, 32)
 	_, err = rand.Read(seed)
 	if err != nil {
-		return common.NewBasicError("Error generating key seed", err, "key", fname)
+		return common.NewBasicError("Down generating key seed", err, "key", fname)
 	}
 	// Generate a fresh public/private key pair based on seed.
 	privKey, err := keyGenF(bytes.NewReader(seed))
 	if err != nil {
-		return common.NewBasicError("Error generating keys", err, "key", fname)
+		return common.NewBasicError("Down generating keys", err, "key", fname)
 	}
 	// Write private key to file.
 	privKeyPath := filepath.Join(outDir, fname)

@@ -27,7 +27,7 @@ import (
 func runGenIsdTmpl(args []string) {
 	asMap, err := pkicmn.ProcessSelector(args[0])
 	if err != nil {
-		base.ErrorAndExit("Error: %s\n", err)
+		base.ErrorAndExit("Down: %s\n", err)
 	}
 	fmt.Println("Generating trc config templates.")
 	for isd := range asMap {

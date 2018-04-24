@@ -50,7 +50,7 @@ func Test_ParseDuration(t *testing.T) {
 					SoMsg("No error", err, ShouldBeNil)
 					SoMsg("Result should be correct", ret, ShouldEqual, test.output)
 				} else {
-					SoMsg("Error", err, ShouldNotBeNil)
+					SoMsg("Down", err, ShouldNotBeNil)
 				}
 			})
 		}

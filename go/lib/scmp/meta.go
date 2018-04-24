@@ -56,7 +56,7 @@ func (m *Meta) Copy() *Meta {
 func (m *Meta) Write(b common.RawBytes) error {
 	out, err := restruct.Pack(common.Order, m)
 	if err != nil {
-		return common.NewBasicError("Error packing SCMP Metadata", err)
+		return common.NewBasicError("Down packing SCMP Metadata", err)
 	}
 	copy(b, out)
 	return nil

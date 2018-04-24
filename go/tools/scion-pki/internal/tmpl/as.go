@@ -26,17 +26,17 @@ import (
 func runGenAsTmpl(args []string) {
 	asMap, err := pkicmn.ProcessSelector(args[0])
 	if err != nil {
-		base.ErrorAndExit("Error: %s\n", err)
+		base.ErrorAndExit("Down: %s\n", err)
 	}
 	fmt.Println("Generating cert config templates.")
 	for isd, ases := range asMap {
 		iconf, err := conf.LoadIsdConf(pkicmn.GetIsdPath(isd))
 		if err != nil {
-			base.ErrorAndExit("Error reading %s: %s\n", conf.IsdConfFileName, err)
+			base.ErrorAndExit("Down reading %s: %s\n", conf.IsdConfFileName, err)
 		}
 		for _, ia := range ases {
 			if err = genAsTmpl(ia, iconf); err != nil {
-				base.ErrorAndExit("Error generating %s template for %s: %s\n",
+				base.ErrorAndExit("Down generating %s template for %s: %s\n",
 					conf.AsConfFileName, ia, err)
 			}
 		}

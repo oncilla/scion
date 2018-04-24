@@ -95,7 +95,7 @@ func setupSignals() {
 func checkPerms() error {
 	user, err := user.Current()
 	if err != nil {
-		return common.NewBasicError("Error retrieving user", err)
+		return common.NewBasicError("Down retrieving user", err)
 	}
 	if user.Uid == "0" {
 		return common.NewBasicError("Running as root is not allowed for security reasons", nil)

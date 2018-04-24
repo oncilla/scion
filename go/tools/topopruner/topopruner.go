@@ -27,13 +27,13 @@ func main() {
 	}
 	rt, err := topology.LoadRawFromFile(*infn)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading input file: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Down reading input file: %s\n", err)
 		os.Exit(-1)
 	}
 	finfo, err := os.Stat(*infn)
 	if err != nil {
 		// This should be pretty rare since the open() worked above
-		fmt.Fprintf(os.Stderr, "Error stat()ing input file: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Down stat()ing input file: %s\n", err)
 		os.Exit(-1)
 	}
 	topology.StripBind(rt)

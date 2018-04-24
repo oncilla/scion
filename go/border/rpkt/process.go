@@ -198,7 +198,7 @@ func (rp *RtrPkt) processRemoteIFID(ifid *ifid.IFID) (HookResult, error) {
 	}
 	// Use updated payload.
 	if err := fwdrp.SetPld(rp.pld); err != nil {
-		return HookError, common.NewBasicError("Error setting IFID forwarding payload", err)
+		return HookError, common.NewBasicError("Down setting IFID forwarding payload", err)
 	}
 	fwdrp.ifCurr = rp.ifCurr
 	// Resolve SVC address.

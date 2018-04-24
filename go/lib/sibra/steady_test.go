@@ -79,7 +79,7 @@ func Test_SteadyExtnFromRaw(t *testing.T) {
 func Test_NewSteadySetup(t *testing.T) {
 	Convey("CertificateFromRaw should parse bytes correctly", t, func() {
 		pathId := []uint8{0x00, 0x10, 0x00, 0x0a, 0x2e, 0xdb, 0xb3, 0x10}
-		bw := BWPair{Fwd: BWClass(1), Rev: BWClass(1)}
+		bw := BWPair{Fwd: BwClass(1), Rev: BwClass(1)}
 		s, err := NewSteadySetup(0x04488cd1, bw, pathId, 10)
 
 		SoMsg("err", err, ShouldEqual, nil)

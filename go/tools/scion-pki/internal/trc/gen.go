@@ -35,11 +35,11 @@ import (
 func runGenTrc(args []string) {
 	asMap, err := pkicmn.ProcessSelector(args[0])
 	if err != nil {
-		base.ErrorAndExit("Error: %s\n", err)
+		base.ErrorAndExit("Down: %s\n", err)
 	}
 	for isd := range asMap {
 		if err = genTrc(isd); err != nil {
-			base.ErrorAndExit("Error generating TRC: %s\n", err)
+			base.ErrorAndExit("Down generating TRC: %s\n", err)
 		}
 	}
 	os.Exit(0)
@@ -54,7 +54,7 @@ func genTrc(isd addr.ISD) error {
 	}
 	iconf, err := conf.LoadIsdConf(dir)
 	if err != nil {
-		return common.NewBasicError("Error loading TRC conf", err)
+		return common.NewBasicError("Down loading TRC conf", err)
 	}
 	fmt.Printf("Generating TRC for ISD %d\n", isd)
 	t, err := newTrc(isd, iconf, dir)
@@ -63,7 +63,7 @@ func genTrc(isd addr.ISD) error {
 	}
 	raw, err := t.JSON(true)
 	if err != nil {
-		return common.NewBasicError("Error json-encoding TRC", err)
+		return common.NewBasicError("Down json-encoding TRC", err)
 	}
 	// Check if output directory exists.
 	outDir := filepath.Join(dir, pkicmn.TRCsDir)
@@ -103,12 +103,12 @@ func newTrc(isd addr.ISD, iconf *conf.Isd, path string) (*trc.TRC, error) {
 		aspath := pkicmn.GetAsPath(cia)
 		online, err := trust.LoadKey(filepath.Join(aspath, pkicmn.KeysDir, trust.OnKeyFile))
 		if err != nil {
-			return nil, common.NewBasicError("Error loading online key", err)
+			return nil, common.NewBasicError("Down loading online key", err)
 		}
 		as.Online = ed25519.PrivateKey(online)
 		offline, err := trust.LoadKey(filepath.Join(aspath, pkicmn.KeysDir, trust.OffKeyFile))
 		if err != nil {
-			return nil, common.NewBasicError("Error loading offline key", err)
+			return nil, common.NewBasicError("Down loading offline key", err)
 		}
 		as.Offline = ed25519.PrivateKey(offline)
 		ases = append(ases, as)
@@ -125,7 +125,7 @@ func newTrc(isd addr.ISD, iconf *conf.Isd, path string) (*trc.TRC, error) {
 	// Sign the TRC.
 	for _, as := range ases {
 		if err := t.Sign(as.IA.String(), common.RawBytes(as.Online), crypto.Ed25519); err != nil {
-			return nil, common.NewBasicError("Error signing TRC", err, "signer", as.IA)
+			return nil, common.NewBasicError("Down signing TRC", err, "signer", as.IA)
 		}
 	}
 	return t, nil

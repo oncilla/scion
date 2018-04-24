@@ -191,7 +191,7 @@ func SendPacket(dst *topology.AddrInfo, portID int, buf common.RawBytes) error {
 	taiToSaddr(dst, cp.dst)
 	cp.port_id = C.uint8_t(portID)
 	if C.send_packet(&cp) != 0 {
-		return common.NewBasicError("Error sending packet through HSR", nil)
+		return common.NewBasicError("Down sending packet through HSR", nil)
 	}
 	return nil
 }

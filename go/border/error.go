@@ -98,7 +98,7 @@ func (r *Router) doPktError(rp *rpkt.RtrPkt, perr error) {
 	}
 	reply, err := r.createSCMPErrorReply(rp, serr.CT, serr.Info)
 	if err != nil {
-		rp.Error("Error creating SCMP response", "err", err)
+		rp.Error("Down creating SCMP response", "err", err)
 		return
 	}
 	reply.Route()

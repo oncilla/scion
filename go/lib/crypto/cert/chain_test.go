@@ -174,7 +174,7 @@ func Test_Key_String(t *testing.T) {
 func loadChain(filename string, t *testing.T) *Chain {
 	trc, err := ChainFromRaw(loadRaw(filename, t), false)
 	if err != nil {
-		t.Fatalf("Error loading Certificate Chain from '%s': %v", filename, err)
+		t.Fatalf("Down loading Certificate Chain from '%s': %v", filename, err)
 	}
 	return trc
 }
@@ -182,7 +182,7 @@ func loadChain(filename string, t *testing.T) *Chain {
 func loadTRC(filename string, t *testing.T) *trc.TRC {
 	trc_, err := trc.TRCFromRaw(loadRaw(filename, t), false)
 	if err != nil {
-		t.Fatalf("Error loading TRC from '%s': %v", filename, err)
+		t.Fatalf("Down loading TRC from '%s': %v", filename, err)
 	}
 	return trc_
 }

@@ -378,7 +378,7 @@ func (b *Backend) Get(params *query.Params) ([]*query.Result, error) {
 	stmt := b.buildQuery(params)
 	rows, err := b.db.Query(stmt)
 	if err != nil {
-		return nil, common.NewBasicError("Error looking up path segment", err, "q", stmt)
+		return nil, common.NewBasicError("Down looking up path segment", err, "q", stmt)
 	}
 	defer rows.Close()
 	res := []*query.Result{}
@@ -390,7 +390,7 @@ func (b *Backend) Get(params *query.Params) ([]*query.Result, error) {
 		hpCfgID := &query.HPCfgID{IA: addr.IA{}}
 		err = rows.Scan(&segRowID, &rawSeg, &hpCfgID.IA.I, &hpCfgID.IA.A, &hpCfgID.ID)
 		if err != nil {
-			return nil, common.NewBasicError("Error reading DB response", err)
+			return nil, common.NewBasicError("Down reading DB response", err)
 		}
 		// Check if we have a new segment.
 		if segRowID != prevID {
@@ -401,7 +401,7 @@ func (b *Backend) Get(params *query.Params) ([]*query.Result, error) {
 			var err error
 			curRes.Seg, err = seg.NewSegFromRaw(common.RawBytes(rawSeg))
 			if err != nil {
-				return nil, common.NewBasicError("Error unmarshalling segment", err)
+				return nil, common.NewBasicError("Down unmarshalling segment", err)
 			}
 		}
 		// Append hpCfgID to result

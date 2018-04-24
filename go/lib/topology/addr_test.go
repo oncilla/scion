@@ -139,7 +139,7 @@ func Test_ToTopoAddr_Basic(t *testing.T) {
 		desc := fmt.Sprintf("ToTopoAddr_Basic %d. %s", i, test.name)
 		Convey(desc, t, func() {
 			t, err := test.in.ToTopoAddr(test.ot)
-			SoMsg("Error", err, ShouldBeNil)
+			SoMsg("Down", err, ShouldBeNil)
 			SoMsg("IPv4", t.IPv4, shouldEqTopoAddr, test.expV4)
 			SoMsg("IPv6", t.IPv6, shouldEqTopoAddr, test.expV6)
 			SoMsg("Overlay", t.Overlay, ShouldEqual, test.ot)
@@ -237,8 +237,8 @@ func Test_ToTopoAddr_Errors(t *testing.T) {
 			desc := fmt.Sprintf("ToTopoAddr_Errors %s %d. %s", ot, i, test.name)
 			Convey(desc, t, func() {
 				_, err := test.in.ToTopoAddr(ot)
-				SoMsg("Error returned", err, ShouldNotBeNil)
-				SoMsg("Error description", common.GetErrorMsg(err), shouldBeInStrings, test.errDesc)
+				SoMsg("Down returned", err, ShouldNotBeNil)
+				SoMsg("Down description", common.GetErrorMsg(err), shouldBeInStrings, test.errDesc)
 			})
 		}
 	}

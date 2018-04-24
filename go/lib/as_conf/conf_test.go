@@ -25,7 +25,7 @@ import (
 func Test_ASConf(t *testing.T) {
 	Convey("Loading test config `testdata/basic.yml`", t, func() {
 		if err := Load("testdata/basic.yml"); err != nil {
-			t.Fatalf("Error loading config: %v", err)
+			t.Fatalf("Down loading config: %v", err)
 		}
 		c := CurrConf
 		So(c, ShouldResemble, &ASConf{

@@ -24,6 +24,9 @@ var _ common.Extension = (*SteadyExtn)(nil)
 
 const (
 	InvalidPathLens = "Invalid steady path lengths"
+
+	// SteadyIDLen is the length of the steady reservation id.
+	SteadyIDLen = 8
 )
 
 // SteadyExtn is the SIBRA Steady path extension header.
@@ -35,6 +38,8 @@ const (
 // have a single path ID.
 type SteadyExtn struct {
 	*BaseExtn
+	ResvBlock *ResvBlock
+	ReqBlock *ReqBlock
 }
 
 func SteadyExtnFromRaw(raw common.RawBytes) (*SteadyExtn, error) {
@@ -42,52 +47,90 @@ func SteadyExtnFromRaw(raw common.RawBytes) (*SteadyExtn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return SteadyExtnFromBase(base)
+	return SteadyExtnFromBase(base, raw)
 }
 
-func SteadyExtnFromBase(base *BaseExtn) (*SteadyExtn, error) {
-	s := &SteadyExtn{base}
-	off, end := common.ExtnFirstLineLen, common.ExtnFirstLineLen+SteadyIDLen
-	s.PathIDs = append(s.PathIDs, PathID(s.raw[off:end]))
-	if s.PathLens[1] != 0 || s.PathLens[2] != 0 {
+func SteadyExtnFromBase(base *BaseExtn, raw common.RawBytes) (*SteadyExtn, error) {
+	var err error
+	if base.PathLens[1] != 0 || base.PathLens[2] != 0 {
 		return nil, common.NewBasicError(InvalidPathLens, nil, "expected", "(x,0,0)",
-			"actual", fmt.Sprintf("(x,%d,%d)", s.PathLens[1], s.PathLens[2]))
+			"actual", fmt.Sprintf("(x,%d,%d)", base.PathLens[1], base.PathLens[2]))
 	}
-	if err := s.updateIndices(); err != nil {
+	s := &SteadyExtn{BaseExtn:base}
+	off, end := common.ExtnFirstLineLen, common.ExtnFirstLineLen+SteadyIDLen
+	s.ResvIDs = append(s.ResvIDs, append(ResvID(nil), raw[off:end]...))
+	if err = s.updateIndices(); err != nil {
 		return nil, err
 	}
 	off = end
-	// There is exactly one active block, if this is not a setup request.
-	if !s.Setup {
+	// If this is not a setup request there is one active reservation block.
+	if s.PacketType != PacketTypeSetup {
 		end += calcResvBlockLen(s.totalHops)
-		if err := s.parseActiveResvBlock(s.raw[off:end], s.totalHops); err != nil {
+		if err := s.parseActiveResvBlock(raw[off:end], s.totalHops); err != nil {
 			return nil, err
 		}
 	}
+	switch s.PacketType {
+	case PacketTypeData:
+		if end != len(raw) {
+			return nil, common.NewBasicError(InvalidExtnLength, nil,
+				"expected", end, "actual", len(raw))
+		}
+		return s, nil
+	case PacketTypeTearDown:
+		return nil, common.NewBasicError("Not supported", nil)
+	}
+
+	// request:
+
+	// fwd +   accepted +  !down -> request block (accepted)
+	// fwd +   accepted +   down -> resv block
+	// fwd +  !accepted +  !down -> request block (failed)
+	// fwd +  !accepted +   down -> request block (failed)
+	// !fwd +  accepted +  !down -> resv block
+	// !fwd +  accepted +   down -> request block (accepted)
+	// !fwd + !accepted +  !down -> request block (failed)
+	// !fwd + !accepted +   down -> request block (failed)
+
+	// If the request is accepted and on the way back, it contains a reservation block
+	if s.Accepted && (s.Forward == s.Down){
+		if s.ResvBlock, err = ResvBlockFromRaw(raw[end:], s.totalHops); err != nil {
+			return nil, err
+		}
+		return s, nil
+	}
+
+	if s.
+
+
+	// data -> check all parsed
+	// renew -> parse request
+	// teardown -> parse request
+
 	return s, s.parseEnd(s.raw[end:])
 }
 
-func NewSteadySetup(exp Tick, bw BWPair, pathID PathID, numHops uint8) (*SteadyExtn, error) {
+func NewSteadySetup(exp Tick, bw BWPair, pathID ResvID, numHops uint8) (*SteadyExtn, error) {
 	if len(pathID) != SteadyIDLen {
-		return nil, common.NewBasicError("Invalid Steady PathID length", nil,
+		return nil, common.NewBasicError("Invalid Steady ResvID length", nil,
 			"expected", SteadyIDLen, "actual", len(pathID))
 	}
 	resvBlockLen := calcResvBlockLen(int(numHops))
 	l := common.ExtnFirstLineLen + SteadyIDLen + resvBlockLen
 	s := &SteadyExtn{
 		&BaseExtn{
-			raw:        make(common.RawBytes, l),
-			SOFIndex:   0,
-			PathLens:   []uint8{numHops, 0, 0},
-			PathIDs:    make([]PathID, 1),
-			ResvActive: make([]*ResvBlock, 0),
-			Setup:      true,
-			Request:    true,
-			Accepted:   true,
-			Error:      false,
-			Steady:     true,
-			Forward:    true,
-			Version:    Version}}
+			raw:         make(common.RawBytes, l),
+			SOFIndex:    0,
+			PathLens:    []uint8{numHops, 0, 0},
+			ResvIDs:     make([]ResvID, 1),
+			ActiveResvs: make([]*ResvBlock, 0),
+			Setup:       true,
+			Request:     true,
+			Accepted:    true,
+			Down:        false,
+			Steady:      true,
+			Forward:     true,
+			Version:     Version}}
 	s.updateIndices()
 	off, end := common.ExtnFirstLineLen, common.ExtnFirstLineLen+SteadyIDLen
 	copy(s.raw[off:end], pathID)

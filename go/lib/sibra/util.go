@@ -14,12 +14,14 @@
 
 package sibra
 
-import "github.com/scionproto/scion/go/lib/common"
+import (
+	"fmt"
+
+	"github.com/scionproto/scion/go/lib/common"
+)
 
 const (
-	// Version is the SIBRA Version number.
-	// It is a 2bit value to be used as (SCION ver, SIBRA ver).
-	Version = 0
+	BufferToShort = "Buffer to short"
 
 	// macInputLen is the input length for SIBRA opaque field MAC computation.
 	// sum of len(Ingress), len(Egress), len(Info), maxPathIDsLen, len(prev mac), padding.
@@ -29,42 +31,90 @@ const (
 	// maxPathIDsLen is the maximum space required to write all path ids.
 	maxPathIDsLen = 3*SteadyIDLen + EphemeralIDLen
 
-	// bwPairLen is the BWPair length.
-	bwPairLen = 2
-	// infoLen is the Info length.
-	infoLen = common.LineLen
-	// opFieldLen is the OpField length.
-	opFieldLen = common.LineLen
-
 	// EphemeralIDLen is the ephemeral path id length.
 	EphemeralIDLen = 16
-	// SteadyIDLen is the steady path id length
-	SteadyIDLen = 8
 )
+
+// PacketType indicates the type of packet that is sent.
+type PacketType uint8
+
+const (
+	PacketTypeData PacketType = iota
+	PacketTypeSetup
+	PacketTypeRenewal
+	PacketTypeTearDown
+)
+
+func (t PacketType) String() string {
+	switch t {
+	case PacketTypeData:
+		return "Data"
+	case PacketTypeSetup:
+		return "Setup"
+	case PacketTypeRenewal:
+		return "Renewal"
+	case PacketTypeTearDown:
+		return "Teardown"
+	}
+	return fmt.Sprintf("UNKNOWN (%d)", t)
+}
+
+// PathType indicates the type of path the packet is sent on.
+type PathType uint8
+
+const (
+	PathTypeDown PathType = iota
+	PathTypeUp
+	PathTypePeerDown
+	PathTypePeerUp
+	PathTypeEphemeral
+	PathTypeCore
+)
+
+func (t PathType) String() string {
+	switch t {
+	case PathTypeDown:
+		return "Down"
+	case PathTypeUp:
+		return "Up"
+	case PathTypePeerDown:
+		return "Peering-Down"
+	case PathTypePeerUp:
+		return "Peering-Up"
+	case PathTypeEphemeral:
+		return "Ephemeral"
+	case PathTypeCore:
+		return "Core"
+	}
+	return fmt.Sprintf("UNKNOWN (%d)", t)
+}
+
+// GenFwd indicates if the SIBRA Opaque field are generated in the forward direction.
+func (t PathType) GenFwd() bool {
+	return (t & 0x1) == 0
+}
+
+type ResvID common.RawBytes
+
+func (p ResvID) Write(b common.RawBytes) error {
+	if len(b) < len(p) {
+		return common.NewBasicError(BufferToShort, nil, "method", "ResvID.Write",
+			"min", len(p), "actual", len(b))
+	}
+	copy(b, p)
+	return nil
+}
+
+func (p ResvID) Len() int {
+	return len(p)
+}
 
 type Tick uint32
 
-type BWPair struct {
-	Fwd BWClass
-	Rev BWClass
-}
+type BwClass uint8
 
-func BWPairFromRaw(raw common.RawBytes) BWPair {
-	return BWPair{Fwd: BWClass(raw[0]), Rev: BWClass(raw[1])}
-}
-
-type BWClass uint8
+type RttClass uint8
 
 type Index uint8
-
-type PathID common.RawBytes
-
-func IndexFromUint8(b uint8) Index {
-	return Index(b >> 4)
-}
-
-func (i Index) ToUint8() uint8 {
-	return uint8(i) << 4
-}
 
 type Interface uint16

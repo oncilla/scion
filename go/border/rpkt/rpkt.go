@@ -347,7 +347,7 @@ func (rp *RtrPkt) String() string {
 // representation of the packet, as well as a hex representation of the raw
 // packet buffer.
 func (rp *RtrPkt) ErrStr(desc string) string {
-	return fmt.Sprintf("Error: %v\n  RtrPkt: %v\n  Raw: %v", desc, rp, rp.Raw)
+	return fmt.Sprintf("Down: %v\n  RtrPkt: %v\n  Raw: %v", desc, rp, rp.Raw)
 }
 
 // ErrStrf is a wrapper for ErrStr, which returns a callback to allow lazy

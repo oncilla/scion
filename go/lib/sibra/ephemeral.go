@@ -33,11 +33,11 @@ func EphemeralExtnFromRaw(raw common.RawBytes) (*EphemeralExtn, error) {
 func EphemeralExtnFromBase(base *BaseExtn) (*EphemeralExtn, error) {
 	e := &EphemeralExtn{base}
 	off, end := common.ExtnFirstLineLen, common.ExtnFirstLineLen+EphemeralIDLen
-	e.PathIDs = append(e.PathIDs, PathID(e.raw[off:end]))
+	e.ResvIDs = append(e.ResvIDs, ResvID(e.raw[off:end]))
 	var i int
 	for i = 0; i < len(e.PathLens) && e.PathLens[i] != 0; i++ {
 		off, end = end, end+SteadyIDLen
-		e.PathIDs = append(e.PathIDs, PathID(e.raw[off:end]))
+		e.ResvIDs = append(e.ResvIDs, ResvID(e.raw[off:end]))
 	}
 	for j := i + 1; j < len(e.PathLens); j++ {
 		if e.PathLens[j] != 0 {
@@ -72,7 +72,7 @@ func (e *EphemeralExtn) updateIndices() error {
 		return e.BaseExtn.updateIndices()
 	}
 	// There are 'num(steady path ids) - 1' block switches.
-	e.totalHops = int(e.PathLens[0]+e.PathLens[1]+e.PathLens[2]) - len(e.PathIDs) + 2
+	e.totalHops = int(e.PathLens[0]+e.PathLens[1]+e.PathLens[2]) - len(e.ResvIDs) + 2
 	bid, sid := 0, int(e.SOFIndex)
 	// Find the current block and the relative SOF index inside that block
 	for ; bid < len(e.PathLens) && sid >= int(e.PathLens[bid]); bid++ {

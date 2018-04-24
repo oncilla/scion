@@ -111,15 +111,15 @@ func (r *Router) genIFStateReq() {
 	srcAddr := ctx.Conf.Net.LocAddr[0].PublicAddrInfo(ctx.Conf.Net.LocAddr[0].Overlay)
 	cpld, err := ctrl.NewPathMgmtPld(&path_mgmt.IFStateReq{}, nil, nil)
 	if err != nil {
-		log.Error("Error generating IFStateReq Ctrl payload", "err", err)
+		log.Error("Down generating IFStateReq Ctrl payload", "err", err)
 		return
 	}
 	scpld, err := cpld.SignedPld(ctrl.NullSigner)
 	if err != nil {
-		log.Error("Error generating IFStateReq signed Ctrl payload", "err", err)
+		log.Error("Down generating IFStateReq signed Ctrl payload", "err", err)
 		return
 	}
 	if err := r.genPkt(ctx.Conf.IA, addr.SvcBS.Multicast(), 0, srcAddr, scpld); err != nil {
-		log.Error("Error generating IFStateReq packet", "err", err)
+		log.Error("Down generating IFStateReq packet", "err", err)
 	}
 }

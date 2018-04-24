@@ -74,7 +74,7 @@ func (h *Hdr) SetPldLen(l int) {
 func (h *Hdr) Write(b common.RawBytes) error {
 	out, err := restruct.Pack(common.Order, h)
 	if err != nil {
-		return common.NewBasicError("Error packing SCMP header", err)
+		return common.NewBasicError("Down packing SCMP header", err)
 	}
 	if count := copy(b, out); count != HdrLen {
 		return common.NewBasicError("Partial write of SCMP header", nil,

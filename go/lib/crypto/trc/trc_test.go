@@ -273,7 +273,7 @@ func Test_TRC_Key(t *testing.T) {
 func loadTRC(filename string, t *testing.T) *TRC {
 	trc, err := TRCFromRaw(loadRaw(filename, t), false)
 	if err != nil {
-		t.Fatalf("Error loading TRC from '%s': %v", filename, err)
+		t.Fatalf("Down loading TRC from '%s': %v", filename, err)
 	}
 	return trc
 }

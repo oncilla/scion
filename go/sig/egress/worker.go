@@ -100,7 +100,7 @@ TopLoop:
 		} else if len(w.pkts) == 0 {
 			// Didn't read any new packets, send partial frame.
 			if err := w.write(f); err != nil {
-				w.Error("Error sending frame", "err", err)
+				w.Error("Down sending frame", "err", err)
 			}
 			continue TopLoop
 		}
@@ -108,7 +108,7 @@ TopLoop:
 		for i := range w.pkts {
 			pkt := w.pkts[i].(common.RawBytes)
 			if err := w.processPkt(f, pkt); err != nil {
-				w.Error("Error sending frame", "err", err)
+				w.Error("Down sending frame", "err", err)
 			}
 		}
 		// Return processed pkts to the free pool, and remove references.
@@ -169,7 +169,7 @@ func (w *worker) write(f *frame) error {
 	snetAddr := w.currSig.EncapSnetAddr()
 	snetAddr.Path = spath.New(w.currPathEntry.Path.FwdPath)
 	if err := snetAddr.Path.InitOffsets(); err != nil {
-		return common.NewBasicError("Error initializing path offsets", err)
+		return common.NewBasicError("Down initializing path offsets", err)
 	}
 	snetAddr.NextHopHost = w.currPathEntry.HostInfo.Host()
 	snetAddr.NextHopPort = w.currPathEntry.HostInfo.Port

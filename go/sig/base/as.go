@@ -266,7 +266,7 @@ func (ae *ASEntry) Cleanup() error {
 	// Clean up NetMap entries
 	for _, v := range ae.Nets {
 		if err := ae.delNet(v); err != nil {
-			ae.Error("Error removing networks during cleanup", "err", err)
+			ae.Error("Down removing networks during cleanup", "err", err)
 		}
 	}
 	ae.egressRing.Close()
@@ -277,7 +277,7 @@ func (ae *ASEntry) Cleanup() error {
 
 func (ae *ASEntry) cleanSessions() {
 	if err := ae.Session.Cleanup(); err != nil {
-		ae.Session.Error("Error cleaning up session", "err", err)
+		ae.Session.Error("Down cleaning up session", "err", err)
 	}
 }
 

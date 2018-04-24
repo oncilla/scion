@@ -17,86 +17,98 @@ package sibra
 import "github.com/scionproto/scion/go/lib/common"
 
 const (
-	SetupAndNoReq      = "Setup flag is set without request flag"
-	UnsupportedVersion = "Unsupported SIBRA version"
+	// Version is the SIBRA Version number.
+	// It is a 2bit value to be used as (SCION ver, SIBRA ver).
+	Version = 0
 
-	flagSetup   = 0x80
-	flagRequest = 0x40
+	InvalidExtnLength    = "Invalid extension length"
+	TeardownAndEphemeral = "Teardown unsupported for ephemeral reservation"
+	UnsupportedVersion   = "Unsupported SIBRA version"
+
+	flagSteady  = 0x80
+	flagForward = 0x40
 	flagAccept  = 0x20
-	flagError   = 0x10
-	flagSteady  = 0x08
-	flagForward = 0x04
+	flagDown    = 0x10
+	flagType    = 0x0c
 	flagVersion = 0x03
+
+	offsetType = 2
 )
 
-// BaseExtn is the basis for SIBRA packet extension. This class isn't used directly, but
-// via EphemeralExtn and SteadyExtn.
-//
 // 0B       1        2        3        4        5        6        7
 // +--------+--------+--------+--------+--------+--------+--------+--------+
-// | xxxxxxxxxxxxxxxxxxxxxxxx | Flags  |SOF idx |P0 hops |P1 hops |P2 hops |
+// | xxxxxxxxxxxxxxxxxxxxxxxx | Flags  |SOF Idx |P0 hops |P1 hops |P2 hops |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
-// | <Path IDs>                                                            |
+// | Reservation IDs (1-4)                                                 |
+// +--------+--------+--------+--------+--------+--------+--------+--------+
+// | Active Reservation Tokens (0-3)                                       |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 // |...                                                                    |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
-// | Reservation block                                                     |
+// | Reservation Request/Response                                          |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 // | ...                                                                   |
-// +                                                                       +
+// +--------+--------+--------+--------+--------+--------+--------+--------+
 //
-// The first byte contains the flag field. Its bits are allocated as follows:
-// - (MSB) path setup flag:
-//      Set if packet is setting up a new SIBRA path.
-// - request flag:
-//      Set if packet is requesting a reservation, i.e. setup or renewal.
-// - accepted flag:
-//      Set if the reservation request has been accepted so far.
-// - error flag:
-//      Set if an error has occurred.
-// - steady flag:
-//      Set if this is a steady path, unset if this is an ephemeral path.
+//
+// Flags are allocated as follows:
+// - (MSB) steady flag:
+//    Set if steady reservation, unset if ephemeral.
 // - forward flag:
-//      Set if packet is travelling src->dest.
-// - version (2b): SIBRA version, to be used as (SCION ver, SIBRA ver).
+//    Set if packet is travelling src -> dest. (if unset, packet is considered
+//    best effort). A request for reservation of a Down or Peering-Down path has
+//    this flag unset, since the request is traveling in the reverse direction
+//    of the reservation.
+// - accepted flag:
+//    Set if the reservation request has been accepted so far.
+// - Down flag:
+//    Set during a steady request if reservation is for a Down or Peering-Down path.
+// - type (2b):
+//    00 := data packet
+//    01 := setup
+//    10 := renewal
+//    11 := tear down (only allowed if steady flag set)
+// - version (2b):
+//    SIBRA version, to be used as (SCION ver, SIBRA ver).
 //
-// - SOF idx indicates which is the current Sibra Opaque Field. The current hop
-// location can be derived from this.
-// - P* hops indicate how long each active reservation block is. Summed, they
-// indicate the total number of hops in the path.
-// - 1-4 Path IDs are used to identify the current path at the current point on
-// its travel.
-// - There can be multiple reservation blocks - between 0 and 3 active blocks,
-// that are used to route the packet, and an optional request block.
+// SOF Idx indicates which sibra opaque field shall be used forwarding.
+//
+// P* hops indicate how long each path of the active reservation blocks is.
+// Summed, they indicate the total number of hops in the resulting path. If
+// this is a steady Reservation (request or usage) P1 and P2 must be 0.
+//
+// Reservation IDs is a list of multiple Reservation IDs (between 1 and 4).
+// The ordering corresponds to that of the active reservation blocks. If this
+// is a setup request, the last ID is the Reservation ID associated with the
+// reservation request.
+//
+// Active Reservations Tokens (between 0 and 3) are contain the reservation
+// info and the hop fields. If 0 are present, this packet must be a steady
+// reservation request.
+//
+// Reservation Request can either be a request or response block. The format
+// is implied by the flags.
 type BaseExtn struct {
-	// raw is the underlying buffer.
-	raw common.RawBytes
-	// Setup indicates if this packet is setting up a new SIBRA path.
-	Setup bool
-	// Request indicates if this packet requests a reservation (both setup and renewal)
-	Request bool
-	// Accepted indicates if the reservation request has been accepted so far.
-	Accepted bool
-	// Error indicates if an error has occurred.
-	Error bool
 	// Steady indicates if this is a steady or an ephemeral path.
 	Steady bool
-	// Forward indicates if packet is travelling src->dst.
+	// Forward indicates if packet is travelling reservation src->dst.
 	Forward bool
-	// Version is the SIBRA version. It is used as (SCION ver, SIBRA ver).
+	// Accepted indicates if the reservation request has been accepted so far.
+	Accepted bool
+	// Down indicates if an error has occurred.
+	Down bool
+	// PacketType indicates if this is a data, setup, renewal or teardown packet.
+	PacketType PacketType
+	// Version is the SIBRA version.
 	Version uint8
 	// SOFIndex indicates the current Sibra Opaque Field.
 	SOFIndex uint8
 	// PathLens indicates how long each active reservation block is.
 	PathLens []uint8
-	// PathIDs holds up to 4 path IDs. They are directly mapped to raw.
-	PathIDs []PathID
-	// ResvActive holds up to 3 active reservations blocks.
-	ResvActive []*ResvBlock
-	// ResvRequest is an optional reservation request.
-	ResvRequest *ResvBlock
-	// ResvOffer is an optional reservation offer.
-	ResvOffer *ResvOffer
+	// ResvIDs holds up to 4 path IDs. They are directly mapped to raw.
+	ResvIDs []ResvID
+	// ActiveResvs holds up to 3 active reservations blocks.
+	ActiveResvs []*ResvBlock
 	// currHop is the current hop.
 	currHop int
 	// blockIdx is the index of the current block.
@@ -108,61 +120,47 @@ type BaseExtn struct {
 }
 
 func BaseExtnFromRaw(raw common.RawBytes) (*BaseExtn, error) {
-	b := &BaseExtn{raw: raw}
+	b := &BaseExtn{}
 	if err := b.parseFlags(raw[0]); err != nil {
 		return nil, err
 	}
 	b.SOFIndex = raw[1]
-	b.PathLens = make([]uint8, 3)
-	copy(b.PathLens, raw[2:5])
-	b.PathIDs = make([]PathID, 0, 4)
-	b.ResvActive = make([]*ResvBlock, 0, 3)
+	b.PathLens = append([]uint8(nil), raw[2:5]...)
+	b.ResvIDs = make([]ResvID, 0, 4)
+	b.ActiveResvs = make([]*ResvBlock, 0, 3)
 	return b, nil
 }
 
+// parseFlags parses the flags
 func (e *BaseExtn) parseFlags(flags uint8) error {
-	e.Setup = (flags & flagSetup) != 0
-	e.Request = (flags & flagRequest) != 0
-	e.Accepted = (flags & flagAccept) != 0
-	e.Error = (flags & flagError) != 0
 	e.Steady = (flags & flagSteady) != 0
 	e.Forward = (flags & flagForward) != 0
+	e.Accepted = (flags & flagAccept) != 0
+	e.Down = (flags & flagDown) != 0
+	e.PacketType = PacketType((flags & flagType) >> offsetType)
 	e.Version = flags & flagVersion
-	if e.Setup && !e.Request {
-		return common.NewBasicError(SetupAndNoReq, nil)
+	if e.Steady && (e.PacketType == PacketTypeTearDown) {
+		return common.NewBasicError(TeardownAndEphemeral, nil)
 	}
 	if e.Version != Version {
-		return common.NewBasicError(UnsupportedVersion, nil, "expected",
-			Version, "actual", e.Version)
+		return common.NewBasicError(UnsupportedVersion, nil, "expected", Version,
+			"actual", e.Version)
 	}
 	return nil
 }
 
+// parseActiveResvBlock parses an active reservation block and appends it to the ActiveResvs list.
 func (e *BaseExtn) parseActiveResvBlock(raw common.RawBytes, numHops int) error {
 	block, err := ResvBlockFromRaw(raw, numHops)
 	if err != nil {
 		return err
 	}
-	e.ResvActive = append(e.ResvActive, block)
+	e.ActiveResvs = append(e.ActiveResvs, block)
 	return nil
 }
 
-func (e *BaseExtn) parseEnd(raw common.RawBytes) error {
-	var err error
-	if e.Request {
-		if e.Accepted {
-			e.ResvRequest, err = ResvBlockFromRaw(raw, e.totalHops)
-		} else {
-			e.ResvOffer, err = ResvOfferFromRaw(raw, e.totalHops)
-		}
-	} else {
-		if len(raw) != 0 {
-			err = common.NewBasicError("SIBRA header not parsed completely", nil, "len", len(raw))
-		}
-	}
-	return err
-}
-
+// updateIndices updates the currHop, relSOFIndex and total hops for the simple case with
+// one active reservation block.
 func (e *BaseExtn) updateIndices() error {
 	e.currHop = int(e.SOFIndex)
 	e.relSOFIndex = int(e.SOFIndex)
@@ -174,71 +172,58 @@ func (e *BaseExtn) updateIndices() error {
 	return nil
 }
 
-func (e *BaseExtn) Pack() (common.RawBytes, error) {
-	b := make(common.RawBytes, e.Len())
-	if err := e.Write(b); err != nil {
-		return nil, err
-	}
-	return b, nil
-}
-
 func (e *BaseExtn) Write(b common.RawBytes) error {
 	if len(b) < e.Len() {
-		return common.NewBasicError("Buffer too short", nil,
-			"method", "SIBRAExtn.Write", "expected min", e.Len(), "actual", len(b))
+		return common.NewBasicError(BufferToShort, nil, "method", "SIBRABaseExtn.Write",
+			"min", e.Len(), "actual", len(b))
 	}
-	e.write()
-	copy(b, e.raw)
-	return nil
-}
-
-// write writes all updates to the underlying buffer.
-func (e *BaseExtn) write() {
-	e.raw[0] = e.packFlags()
-	e.raw[1] = e.SOFIndex
+	b[0] = e.packFlags()
+	b[1] = e.SOFIndex
 	off, end := 2, 5
-	copy(e.raw[off:end], e.PathLens)
-	for i := range e.PathIDs {
-		off, end = end, end+len(e.PathIDs[i])
+	copy(b[off:end], e.PathLens)
+	for i := range e.ResvIDs {
+		off, end = end, end+e.ResvIDs[i].Len()
+		if err := e.ResvIDs[i].Write(b[off:end]); err != nil {
+			return err
+		}
 	}
-	for i := range e.ResvActive {
-		off, end = end, end+e.ResvActive[i].Len()
-		e.ResvActive[i].write()
+	for i := range e.ActiveResvs {
+		off, end = end, end+e.ActiveResvs[i].Len()
+		if err := e.ActiveResvs[i].Write(b[off:end]); err != nil {
+			return err
+		}
 	}
-	if e.ResvRequest != nil {
-		e.ResvRequest.write()
-	} else if e.ResvOffer != nil {
-		e.ResvOffer.write()
-	}
+	return nil
 }
 
 func (e *BaseExtn) packFlags() uint8 {
 	var flags uint8 = 0
-	if e.Setup {
-		flags |= flagSetup
-	}
-	if e.Request {
-		flags |= flagRequest
-	}
-	if e.Accepted {
-		flags |= flagAccept
-	}
-	if e.Error {
-		flags |= flagError
-	}
 	if e.Steady {
 		flags |= flagSteady
 	}
 	if e.Forward {
 		flags |= flagForward
 	}
-	flags |= flagVersion & Version
-
+	if e.Accepted {
+		flags |= flagAccept
+	}
+	if e.Down {
+		flags |= flagDown
+	}
+	flags |= uint8(e.PacketType) << offsetType
+	flags |= Version
 	return flags
 }
 
 func (e *BaseExtn) Len() int {
-	return len(e.raw)
+	l := common.ExtnFirstLineLen
+	for _, resvID := range e.ResvIDs {
+		l += resvID.Len()
+	}
+	for _, resvBlock := range e.ActiveResvs {
+		l += resvBlock.Len()
+	}
+	return l
 }
 
 func (e *BaseExtn) Class() common.L4ProtocolType {

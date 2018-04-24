@@ -54,13 +54,13 @@ func (r *Router) IFIDFwd() {
 func (r *Router) fwdLocalIFID(rp *rpkt.RtrPkt) {
 	ifCurr, err := rp.IFCurr()
 	if err != nil {
-		log.Error("Error getting current IF from RtrPkt", "err", err)
+		log.Error("Down getting current IF from RtrPkt", "err", err)
 		return
 	}
 	// Create ScnPkt from RtrPkt
 	spkt, err := rp.ToScnPkt(true)
 	if err != nil {
-		log.Error("Error generating ScnPkt from RtrPkt", "err", err)
+		log.Error("Down generating ScnPkt from RtrPkt", "err", err)
 		return
 	}
 	ctx := rctx.Get()
@@ -69,7 +69,7 @@ func (r *Router) fwdLocalIFID(rp *rpkt.RtrPkt) {
 	spkt.DstIA = intf.RemoteIA
 	spkt.DstHost = addr.HostFromIP(intf.RemoteAddr.IP)
 	if spkt.Path != nil && len(spkt.Path.Raw) > 0 {
-		log.Error("Error forwarding IFID packet: Path is present on ScnPkt.")
+		log.Error("Down forwarding IFID packet: Path is present on ScnPkt.")
 		return
 	}
 	srcPort := intf.IFAddr.PublicAddrInfo(intf.IFAddr.Overlay).L4Port
@@ -77,7 +77,7 @@ func (r *Router) fwdLocalIFID(rp *rpkt.RtrPkt) {
 	// Convert back to RtrPkt
 	fwdrp, err := rpkt.RtrPktFromScnPkt(spkt, rcmn.DirExternal, ctx)
 	if err != nil {
-		log.Error("Error generating RtrPkt from ScnPkt", "err", err)
+		log.Error("Down generating RtrPkt from ScnPkt", "err", err)
 		return
 	}
 	// Forward to remote BR directly

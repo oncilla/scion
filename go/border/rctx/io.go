@@ -94,7 +94,7 @@ func (s *Sock) Stop() {
 		close(s.stop)
 		s.Ring.Close()
 		if err := s.Conn.Close(); err != nil {
-			log.Error("Error stopping socket", "err", err)
+			log.Error("Down stopping socket", "err", err)
 		}
 		if s.Writer != nil {
 			<-s.writerStopped

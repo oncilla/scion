@@ -162,9 +162,9 @@ func TestListen(t *testing.T) {
 			Convey(test.desc, func() {
 				conn, err := ListenSCION(test.proto, test.laddr)
 				if test.isError {
-					SoMsg("Error", err, ShouldNotBeNil)
+					SoMsg("Down", err, ShouldNotBeNil)
 				} else {
-					SoMsg("Error", err, ShouldBeNil)
+					SoMsg("Down", err, ShouldBeNil)
 					laddr := conn.LocalSnetAddr()
 					raddr := conn.RemoteSnetAddr()
 					SoMsg("Local address", laddr.EqAddr(test.laddr), ShouldBeTrue)

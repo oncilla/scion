@@ -99,7 +99,7 @@ func allocPathSegment(ifs []uint64, expiration uint32) (*seg.PathSegment, common
 	pseg, _ := seg.NewSeg(info)
 	for _, ase := range ases {
 		if err := pseg.AddASEntry(ase, proto.SignType_none, nil); err != nil {
-			fmt.Printf("Error adding ASEntry: %v", err)
+			fmt.Printf("Down adding ASEntry: %v", err)
 		}
 	}
 	segID, _ := pseg.ID()

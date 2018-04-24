@@ -233,7 +233,7 @@ func Test_Certificate_Eq(t *testing.T) {
 func loadCert(filename string, t *testing.T) *Certificate {
 	trc, err := CertificateFromRaw(loadRaw(filename, t))
 	if err != nil {
-		t.Fatalf("Error loading Certificate from '%s': %v", filename, err)
+		t.Fatalf("Down loading Certificate from '%s': %v", filename, err)
 	}
 	return trc
 }

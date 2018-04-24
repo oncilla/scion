@@ -32,12 +32,12 @@ func runVerify(args []string) {
 		// Load file.
 		raw, err := ioutil.ReadFile(certPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading %s: %s\n", certPath, err)
+			fmt.Fprintf(os.Stderr, "Down reading %s: %s\n", certPath, err)
 			continue
 		}
 		chain, err := cert.ChainFromRaw(raw, false)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error parsing chain: %s\n", err)
+			fmt.Fprintf(os.Stderr, "Down parsing chain: %s\n", err)
 			continue
 		}
 		if err = verifyChain(chain, chain.Leaf.Subject); err != nil {

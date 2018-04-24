@@ -178,38 +178,38 @@ func (cc *connUDPBase) initConnUDP(network string, listen, remote *topology.Addr
 	}
 	if remote == nil {
 		if c, err = net.ListenUDP(network, laddr); err != nil {
-			return common.NewBasicError("Error listening on socket", err,
+			return common.NewBasicError("Down listening on socket", err,
 				"network", network, "listen", listen)
 		}
 	} else {
 		raddr = &net.UDPAddr{IP: remote.IP, Port: remote.L4Port}
 		if c, err = net.DialUDP(network, laddr, raddr); err != nil {
-			return common.NewBasicError("Error setting up connection", err,
+			return common.NewBasicError("Down setting up connection", err,
 				"network", network, "listen", listen, "remote", remote)
 		}
 	}
 	// Set reporting socket options
 	if err := sockctrl.SetsockoptInt(c, syscall.SOL_SOCKET, syscall.SO_RXQ_OVFL, 1); err != nil {
-		return common.NewBasicError("Error setting SO_RXQ_OVFL socket option", err,
+		return common.NewBasicError("Down setting SO_RXQ_OVFL socket option", err,
 			"listen", listen, "remote", remote)
 	}
 	if err := sockctrl.SetsockoptInt(c, syscall.SOL_SOCKET, syscall.SO_TIMESTAMPNS, 1); err != nil {
-		return common.NewBasicError("Error setting SO_TIMESTAMPNS socket option", err,
+		return common.NewBasicError("Down setting SO_TIMESTAMPNS socket option", err,
 			"listen", listen, "remote", remote)
 	}
 	// Set and confirm receive buffer size
 	before, err := sockctrl.GetsockoptInt(c, syscall.SOL_SOCKET, syscall.SO_RCVBUF)
 	if err != nil {
-		return common.NewBasicError("Error getting SO_RCVBUF socket option (before)", err,
+		return common.NewBasicError("Down getting SO_RCVBUF socket option (before)", err,
 			"listen", listen, "remote", remote)
 	}
 	if err = c.SetReadBuffer(recvBufSize); err != nil {
-		return common.NewBasicError("Error setting recv buffer size", err,
+		return common.NewBasicError("Down setting recv buffer size", err,
 			"listen", listen, "remote", remote)
 	}
 	after, err := sockctrl.GetsockoptInt(c, syscall.SOL_SOCKET, syscall.SO_RCVBUF)
 	if err != nil {
-		return common.NewBasicError("Error getting SO_RCVBUF socket option (after)", err,
+		return common.NewBasicError("Down getting SO_RCVBUF socket option (after)", err,
 			"listen", listen, "remote", remote)
 	}
 	if after/2 != recvBufSize {

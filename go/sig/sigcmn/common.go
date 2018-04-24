@@ -74,13 +74,13 @@ func Init(ia addr.IA, ip net.IP) error {
 	// Initialize SCION local networking module
 	err = snet.Init(ia, *sciondPath, *dispatcherPath)
 	if err != nil {
-		return common.NewBasicError("Error creating local SCION Network context", err)
+		return common.NewBasicError("Down creating local SCION Network context", err)
 	}
 	PathMgr = snet.DefNetwork.PathResolver()
 	CtrlConn, err = snet.ListenSCION(
 		"udp4", &snet.Addr{IA: IA, Host: Host, L4Port: uint16(*CtrlPort)})
 	if err != nil {
-		return common.NewBasicError("Error creating ctrl socket", err)
+		return common.NewBasicError("Down creating ctrl socket", err)
 	}
 	return nil
 }

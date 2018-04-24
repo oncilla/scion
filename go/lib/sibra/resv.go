@@ -16,11 +16,7 @@ package sibra
 
 import "github.com/scionproto/scion/go/lib/common"
 
-// ResvBlock is the SIBRA reservation block. This can either be an active
-// block, in which case it's used for routing the packet; or a request block,
-// in which case it's evaluated and filled in by each hop on the path. If any
-// hop rejects the request, then this block will be replaced by an offers
-// block.
+// ResvBlock is the SIBRA reservation block.
 //
 // 0B       1        2        3        4        5        6        7
 // +--------+--------+--------+--------+--------+--------+--------+--------+
@@ -34,8 +30,6 @@ import "github.com/scionproto/scion/go/lib/common"
 // A reservation block is made up of a reservation info field, and a list of
 // SIBRA opaque fields.
 type ResvBlock struct {
-	// raw is the underlying buffer
-	raw common.RawBytes
 	// Info is the reservation info field.
 	Info *Info
 	// OpFields are the SIBRA opaque fields.
@@ -49,7 +43,6 @@ func ResvBlockFromRaw(raw common.RawBytes, numHops int) (*ResvBlock, error) {
 	}
 	off, end := 0, infoLen
 	block := &ResvBlock{
-		raw:      raw,
 		Info:     NewInfoFromRaw(raw[:end]),
 		OpFields: make([]*OpField, numHops),
 	}
@@ -60,11 +53,22 @@ func ResvBlockFromRaw(raw common.RawBytes, numHops int) (*ResvBlock, error) {
 	return block, nil
 }
 
-func (r *ResvBlock) write() {
-	r.Info.write()
-	for _, op := range r.OpFields {
-		op.write()
+func (r *ResvBlock) Write(b common.RawBytes) error {
+	if len(b) < r.Len() {
+		return common.NewBasicError(BufferToShort, nil, "method", "SIBRAResvBlock.Write",
+			"min", r.Len(), "actual", len(b))
 	}
+	off, end := 0, infoLen
+	if err := r.Info.Write(b[off:end]); err != nil {
+		return err
+	}
+	for _, op := range r.OpFields {
+		off, end := end, end+opFieldLen
+		if err := op.Write(b[off:end]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *ResvBlock) Len() int {

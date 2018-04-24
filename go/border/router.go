@@ -92,11 +92,11 @@ func (r *Router) confSig() {
 		var err error
 		var config *conf.Conf
 		if config, err = r.loadNewConfig(); err != nil {
-			log.Error("Error reloading config", "err", err)
+			log.Error("Down reloading config", "err", err)
 			continue
 		}
 		if err := r.setupNewContext(config); err != nil {
-			log.Error("Error setting up new context", "err", err)
+			log.Error("Down setting up new context", "err", err)
 			continue
 		}
 		log.Info("Config reloaded")
@@ -140,19 +140,19 @@ func (r *Router) processPacket(rp *rpkt.RtrPkt) {
 	// XXX(kormat): uncomment for debugging:
 	//rp.Debug("processPacket", "raw", rp.Raw)
 	if err := rp.Parse(); err != nil {
-		r.handlePktError(rp, err, "Error parsing packet")
+		r.handlePktError(rp, err, "Down parsing packet")
 		return
 	}
 	// Validation looks for errors in the packet that didn't break basic
 	// parsing.
 	if err := rp.Validate(); err != nil {
-		r.handlePktError(rp, err, "Error validating packet")
+		r.handlePktError(rp, err, "Down validating packet")
 		return
 	}
 	// Check if the packet needs to be processed locally, and if so register
 	// hooks for doing so.
 	if err := rp.NeedsLocalProcessing(); err != nil {
-		rp.Error("Error checking for local processing", "err", err)
+		rp.Error("Down checking for local processing", "err", err)
 		return
 	}
 	// Parse the packet payload, if a previous step has registered a relevant
@@ -160,20 +160,20 @@ func (r *Router) processPacket(rp *rpkt.RtrPkt) {
 	if _, err := rp.Payload(true); err != nil {
 		// Any errors at this point are application-level, and hence not
 		// calling handlePktError, as no SCMP errors will be sent.
-		rp.Error("Error parsing payload", "err", err)
+		rp.Error("Down parsing payload", "err", err)
 		return
 	}
 	// Process the packet, if a previous step has registered a relevant hook
 	// for doing so.
 	if err := rp.Process(); err != nil {
-		r.handlePktError(rp, err, "Error processing packet")
+		r.handlePktError(rp, err, "Down processing packet")
 		return
 	}
 	// If the packet's destination is this router, there's no need to forward
 	// it.
 	if rp.DirTo != rcmn.DirSelf {
 		if err := rp.Route(); err != nil {
-			r.handlePktError(rp, err, "Error routing packet")
+			r.handlePktError(rp, err, "Down routing packet")
 		}
 	}
 }

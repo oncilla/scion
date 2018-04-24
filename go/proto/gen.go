@@ -65,7 +65,7 @@ func NewRootStruct(id ProtoIdType, seg *capnp.Segment) (capnp.Struct, error) {
 	case {{.}}_TypeID:
 		v, err := NewRoot{{.}}(seg)
 		if err != nil {
-			return blank, common.NewBasicError("Error creating new {{.}} capnp struct", err)
+			return blank, common.NewBasicError("Down creating new {{.}} capnp struct", err)
 		}
 		return v.Struct, nil
 	{{- end }}

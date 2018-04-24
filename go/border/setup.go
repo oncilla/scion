@@ -99,7 +99,7 @@ func (r *Router) setup() error {
 func (r *Router) clearCapabilities() error {
 	caps, err := capability.NewPid(0)
 	if err != nil {
-		return common.NewBasicError("Error retrieving capabilities", err)
+		return common.NewBasicError("Down retrieving capabilities", err)
 	}
 	log.Debug("Startup capabilities", "caps", caps)
 	caps.Clear(capability.CAPS)

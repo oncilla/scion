@@ -185,28 +185,28 @@ func (sm *sessMonitor) sendReq() {
 	}
 	spld, err := mgmt.NewPld(msgId, mgmt.NewPollReq(sigcmn.MgmtAddr, sm.sess.SessId))
 	if err != nil {
-		sm.Error("sessMonitor: Error creating SIGCtrl payload", "err", err)
+		sm.Error("sessMonitor: Down creating SIGCtrl payload", "err", err)
 		return
 	}
 	cpld, err := ctrl.NewPld(spld, nil)
 	if err != nil {
-		sm.Error("sessMonitor: Error creating Ctrl payload", "err", err)
+		sm.Error("sessMonitor: Down creating Ctrl payload", "err", err)
 		return
 	}
 	scpld, err := cpld.SignedPld(ctrl.NullSigner)
 	if err != nil {
-		sm.Error("sessMonitor: Error creating signed Ctrl payload", "err", err)
+		sm.Error("sessMonitor: Down creating signed Ctrl payload", "err", err)
 		return
 	}
 	raw, err := scpld.PackPld()
 	if err != nil {
-		sm.Error("sessMonitor: Error packing signed Ctrl payload", "err", err)
+		sm.Error("sessMonitor: Down packing signed Ctrl payload", "err", err)
 		return
 	}
 	raddr := sm.smRemote.Sig.CtrlSnetAddr()
 	raddr.Path = spath.New(sm.smRemote.sessPath.pathEntry.Path.FwdPath)
 	if err := raddr.Path.InitOffsets(); err != nil {
-		sm.Error("sessMonitor: Error initializing path offsets", "err", err)
+		sm.Error("sessMonitor: Down initializing path offsets", "err", err)
 	}
 	raddr.NextHopHost = sm.smRemote.sessPath.pathEntry.HostInfo.Host()
 	raddr.NextHopPort = sm.smRemote.sessPath.pathEntry.HostInfo.Port
@@ -215,7 +215,7 @@ func (sm *sessMonitor) sendReq() {
 	// goroutines write to it.
 	_, err = sm.sess.conn.WriteToSCION(raw, raddr)
 	if err != nil {
-		sm.Error("sessMonitor: Error sending signed Ctrl payload", "err", err)
+		sm.Error("sessMonitor: Down sending signed Ctrl payload", "err", err)
 	}
 }
 

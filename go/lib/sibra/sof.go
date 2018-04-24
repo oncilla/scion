@@ -18,61 +18,70 @@ import (
 	"hash"
 
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/util"
+)
+
+const (
+	// opFieldLen is the SIBRA opaque field length.
+	opFieldLen = common.LineLen
 )
 
 // OpField is the SIBRA Opqaue Field. This is used for routing SIBRA packets.
 // It describes the ingress/egress interfaces, and has a MAC to authenticate
 // that it was issued for this reservation.
 //
+// Whether the previous or the next OpField is used as input for the mac
+// depends on the path type.
+//
 // 0B       1        2        3        4        5        6        7
 // +--------+--------+--------+--------+--------+--------+--------+--------+
-// | Ingress IF      | Egress IF       | MAC(IFs, res info, pathIDs, prev) |
+// | Ingress IF      | Egress IF       | MAC(IFs, res info, pathIDs, sof)  |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 type OpField struct {
-	// raw is the underlying buffer.
-	raw common.RawBytes
 	// Ingress is the ingress interface.
 	Ingress Interface
 	// Egress is the egress interface.
 	Egress Interface
-	// Mac is the MAC over (IFs, res info, pathIDs, prev). It is mapped directly to raw.
+	// Mac is the MAC over (IFs, res info, pathIDs, prev).
 	Mac common.RawBytes
 }
 
 func NewOpFieldFromRaw(raw common.RawBytes) *OpField {
 	return &OpField{
-		raw:     raw,
 		Ingress: Interface(common.Order.Uint16(raw[:2])),
 		Egress:  Interface(common.Order.Uint16(raw[2:4])),
-		Mac:     raw[4:8],
+		Mac:     append(common.RawBytes(nil), raw[4:8]...),
 	}
 }
 
-// write writes all updates to the underlying buffer.
-func (o *OpField) write() {
-	common.Order.PutUint16(o.raw[:2], uint16(o.Ingress))
-	common.Order.PutUint16(o.raw[2:4], uint16(o.Egress))
+func (o *OpField) Write(b common.RawBytes) error {
+	if len(b) < o.Len() {
+		return common.NewBasicError(BufferToShort, nil, "method", "SIBRAopField.Write",
+			"min", o.Len(), "actual", len(b))
+	}
+	common.Order.PutUint16(b[:2], uint16(o.Ingress))
+	common.Order.PutUint16(b[2:4], uint16(o.Egress))
+	copy(b[4:8], o.Mac)
 }
 
-func (o *OpField) CalcMac(mac hash.Hash, info *Info, ids []PathID,
-	prev common.RawBytes) (common.RawBytes, error) {
+func (o *OpField) CalcMac(mac hash.Hash, info *Info, ids []*ResvID,
+	sof common.RawBytes) (common.RawBytes, error) {
 
-	all := make(common.RawBytes, macInputLen)
-	common.Order.PutUint16(all[:2], uint16(o.Ingress))
-	common.Order.PutUint16(all[2:4], uint16(o.Egress))
-	off, end := 4, 4+info.Len()
-	info.writeToBuff(all[off:end], true)
-	for i := range ids {
-		off, end = end, end+len(ids[i])
-		copy(all[off:end], ids[i])
-	}
-	off = 4 + info.Len() + maxPathIDsLen
-	if prev != nil {
-		copy(all[off:off+MacLen], prev)
-	}
-	tag, err := util.Mac(mac, all)
-	return tag[:MacLen], err
+	//	all := make(common.RawBytes, macInputLen)
+	//	common.Order.PutUint16(all[:2], uint16(o.Ingress))
+	//	common.Order.PutUint16(all[2:4], uint16(o.Egress))
+	//	off, end := 4, 4+info.Len()
+	//	info.writeToBuff(all[off:end], true)
+	//	for i := range ids {
+	//		off, end = end, end+len(ids[i])
+	//		copy(all[off:end], ids[i])
+	//	}
+	//	off = 4 + info.Len() + maxPathIDsLen
+	//	if prev != nil {
+	//		copy(all[off:off+MacLen], prev)
+	//	}
+	//	tag, err := util.Mac(mac, all)
+	//	return tag[:MacLen], err
+	return nil, nil // TODO(roosd): implement
 }
 
 func (o *OpField) Len() int {

@@ -84,5 +84,5 @@ func (e *Extn) Type() common.ExtnType {
 }
 
 func (e *Extn) String() string {
-	return fmt.Sprintf("SCMP Ext(%dB): Error? %v HopByHop: %v", e.Len(), e.Error, e.HopByHop)
+	return fmt.Sprintf("SCMP Ext(%dB): Down? %v HopByHop: %v", e.Len(), e.Error, e.HopByHop)
 }

@@ -37,12 +37,12 @@ import (
 func runGenCert(args []string) {
 	asMap, err := pkicmn.ProcessSelector(args[0])
 	if err != nil {
-		base.ErrorAndExit("Error: %s\n", err)
+		base.ErrorAndExit("Down: %s\n", err)
 	}
 	for isd, ases := range asMap {
 		iconf, err := conf.LoadIsdConf(pkicmn.GetIsdPath(isd))
 		if err != nil {
-			base.ErrorAndExit("Error reading isd.ini: %s\n", err)
+			base.ErrorAndExit("Down reading isd.ini: %s\n", err)
 		}
 		// Process cores.
 		for _, ia := range ases {
@@ -50,7 +50,7 @@ func runGenCert(args []string) {
 				continue
 			}
 			if err = genCert(ia, true); err != nil {
-				base.ErrorAndExit("Error generating cert for %s: %s\n", ia, err)
+				base.ErrorAndExit("Down generating cert for %s: %s\n", ia, err)
 			}
 		}
 		// Process non-cores.
@@ -59,7 +59,7 @@ func runGenCert(args []string) {
 				continue
 			}
 			if err = genCert(ia, false); err != nil {
-				base.ErrorAndExit("Error generating cert for %s: %s\n", ia, err)
+				base.ErrorAndExit("Down generating cert for %s: %s\n", ia, err)
 			}
 		}
 	}
@@ -77,7 +77,7 @@ func genCert(ia addr.IA, isIssuer bool) error {
 	}
 	a, err := conf.LoadAsConf(dir)
 	if err != nil {
-		return common.NewBasicError("Error loading as.ini", err, "path", cpath)
+		return common.NewBasicError("Down loading as.ini", err, "path", cpath)
 	}
 	if isIssuer && a.IssuerCert == nil {
 		return common.NewBasicError(fmt.Sprintf("'%s' section missing from as.ini",
@@ -95,12 +95,12 @@ func genCert(ia addr.IA, isIssuer bool) error {
 	if isIssuer {
 		issuerCert, err = genIssuerCert(a.IssuerCert, ia)
 		if err != nil {
-			return common.NewBasicError("Error generating issuer cert", err, "subject", ia)
+			return common.NewBasicError("Down generating issuer cert", err, "subject", ia)
 		}
 	} else {
 		issuerCert, err = getIssuerCert(a.AsCert.IssuerIA)
 		if err != nil {
-			return common.NewBasicError("Error loading issuer cert", err, "subject", ia)
+			return common.NewBasicError("Down loading issuer cert", err, "subject", ia)
 		}
 	}
 	if issuerCert == nil {
@@ -109,7 +109,7 @@ func genCert(ia addr.IA, isIssuer bool) error {
 	// Generate the AS certificate chain.
 	chain, err := genASCert(a.AsCert, ia, issuerCert)
 	if err != nil {
-		return common.NewBasicError("Error generating cert", err, "subject", ia)
+		return common.NewBasicError("Down generating cert", err, "subject", ia)
 	}
 	// Check if out directory exists and if not create it.
 	out := filepath.Join(dir, pkicmn.CertsDir)
@@ -121,10 +121,10 @@ func genCert(ia addr.IA, isIssuer bool) error {
 	// Write the cert to disk.
 	raw, err := chain.JSON(true)
 	if err != nil {
-		return common.NewBasicError("Error json-encoding cert", err, "subject", ia)
+		return common.NewBasicError("Down json-encoding cert", err, "subject", ia)
 	}
 	if err = pkicmn.WriteToFile(raw, filepath.Join(out, fname), 0644); err != nil {
-		return common.NewBasicError("Error writing cert", err, "subject", ia)
+		return common.NewBasicError("Down writing cert", err, "subject", ia)
 	}
 	return nil
 }
@@ -152,7 +152,7 @@ func genIssuerCert(issuerConf *conf.IssuerCert, s addr.IA) (*cert.Certificate, e
 	currTrc, err := trc.TRCFromFile(currTrcPath, false)
 
 	if err != nil {
-		return nil, common.NewBasicError("Error reading TRC", err, "path: ", currTrcPath)
+		return nil, common.NewBasicError("Down reading TRC", err, "path: ", currTrcPath)
 	}
 
 	coreAs, ok := currTrc.CoreASes[s]
