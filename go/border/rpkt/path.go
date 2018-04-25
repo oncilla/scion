@@ -34,9 +34,9 @@ func (rp *RtrPkt) validatePath(dirFrom rcmn.Dir) error {
 	// First check if there is a path
 	if rp.infoF == nil || rp.hopF == nil {
 		// If there's no path, then there's nothing to check.
-		if rp.DirTo == rcmn.DirSelf {
+		if rp.DirTo == rcmn.DirSelf || rp.ignorePath {
 			// An empty path is legitimate when the packet's destination is
-			// this router.
+			// this router. Or if an extension injects and validates the path.
 			return nil
 		}
 		return common.NewBasicError("Path required",

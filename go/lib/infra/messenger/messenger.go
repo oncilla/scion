@@ -69,6 +69,7 @@ import (
 	"github.com/scionproto/scion/go/lib/ctrl/cert_mgmt"
 	"github.com/scionproto/scion/go/lib/ctrl/ctrl_msg"
 	"github.com/scionproto/scion/go/lib/ctrl/path_mgmt"
+	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
 	"github.com/scionproto/scion/go/lib/infra"
 	"github.com/scionproto/scion/go/lib/infra/disp"
 	"github.com/scionproto/scion/go/lib/log"
@@ -296,6 +297,100 @@ func (m *Messenger) SendChainIssueReply(ctx context.Context, msg *cert_mgmt.Chai
 	return m.getRequester(infra.ChainIssueReply, infra.None).Notify(ctx, pld, a)
 }
 
+// SendSibraSteady sends a reliable sibra_mgmt.SteadyRep to address a.
+func (m *Messenger) SendSibraEphemReq(ctx context.Context, msg *sibra_mgmt.EphemReq, a net.Addr,
+	id uint64) error {
+
+	pld, err := ctrl.NewSibraMgmtPld(msg, nil, &ctrl.Data{ReqId: id})
+	if err != nil {
+		return err
+	}
+	return m.getRequester(infra.None, infra.None).Notify(ctx, pld, a)
+}
+
+// SendSibraSteady sends a reliable sibra_mgmt.SteadyRep to address a.
+func (m *Messenger) SendSibraEphemRep(ctx context.Context, msg *sibra_mgmt.EphemRep, a net.Addr,
+	id uint64) error {
+
+	pld, err := ctrl.NewSibraMgmtPld(msg, nil, &ctrl.Data{ReqId: id})
+	if err != nil {
+		return err
+	}
+	return m.getRequester(infra.None, infra.None).Notify(ctx, pld, a)
+}
+
+// GetSibraSteady asks the server at the remote address for the steady reservations that
+// satisfy msg.
+func (m *Messenger) GetSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyReq,
+	a net.Addr, id uint64) (*sibra_mgmt.SteadyRep, error) {
+
+	pld, err := ctrl.NewSibraMgmtPld(msg, nil, &ctrl.Data{ReqId: id})
+	if err != nil {
+		return nil, err
+	}
+	replyCtrlPld, _, err := m.getRequester(infra.None, infra.None).Request(ctx, pld, a)
+	if err != nil {
+		return nil, err
+	}
+	_, replyMsg, err := m.validate(replyCtrlPld)
+	if err != nil {
+		return nil, err
+	}
+	reply, ok := replyMsg.(*sibra_mgmt.SteadyRep)
+	if !ok {
+		return nil, newTypeAssertErr("*sibra_mgmt.SteadyRep", replyMsg)
+	}
+	if err := reply.ParseRaw(); err != nil {
+		return nil, err
+	}
+	return reply, nil
+}
+
+// SendSibraSteady sends a reliable sibra_mgmt.SteadyRep to address a.
+func (m *Messenger) SendSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyRep, a net.Addr,
+	id uint64) error {
+
+	pld, err := ctrl.NewSibraMgmtPld(msg, nil, &ctrl.Data{ReqId: id})
+	if err != nil {
+		return err
+	}
+	return m.getRequester(infra.None, infra.None).Notify(ctx, pld, a)
+}
+
+// RegisterSibraSteady sends a reliable sibra_mgmt.SteadyRep to address a.
+func (m *Messenger) RegisterSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyReg, a net.Addr,
+	id uint64) (*sibra_mgmt.SteadyRegRep, error) {
+
+	pld, err := ctrl.NewSibraMgmtPld(msg, nil, &ctrl.Data{ReqId: id})
+	if err != nil {
+		return nil, err
+	}
+	replyCtrlPld, _, err := m.getRequester(infra.None, infra.None).Request(ctx, pld, a)
+	if err != nil {
+		return nil, err
+	}
+	_, replyMsg, err := m.validate(replyCtrlPld)
+	if err != nil {
+		return nil, err
+	}
+	reply, ok := replyMsg.(*sibra_mgmt.SteadyRegRep)
+	if !ok {
+		return nil, newTypeAssertErr("*sibra_mgmt.SteadyRegRep", replyMsg)
+	}
+	return reply, nil
+}
+
+// SendSibraSteady sends a reliable sibra_mgmt.SteadyRep to address a.
+func (m *Messenger) AckRegisterSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyRegRep,
+	a net.Addr, id uint64) error {
+
+	pld, err := ctrl.NewSibraMgmtPld(msg, nil, &ctrl.Data{ReqId: id})
+	if err != nil {
+		return err
+	}
+	return m.getRequester(infra.None, infra.None).Notify(ctx, pld, a)
+}
+
 // AddHandler registers a handler for msgType.
 func (m *Messenger) AddHandler(msgType infra.MessageType, handler infra.Handler) {
 	m.handlersLock.Lock()
@@ -440,6 +535,25 @@ func (m *Messenger) validate(pld *ctrl.Pld) (infra.MessageType, proto.Cerealizab
 		default:
 			return infra.None, nil,
 				common.NewBasicError("Unsupported SignedPld.CtrlPld.PathMgmt.Xxx message type",
+					nil, "capnp_which", pld.PathMgmt.Which)
+		}
+	case proto.CtrlPld_Which_sibraMgmt:
+		switch pld.SibraMgmt.Which {
+		case proto.SibraMgmt_Which_sibraExternalPkt:
+			return infra.SIBRAExtPkt, pld.SibraMgmt.ExternPkt, nil
+		case proto.SibraMgmt_Which_sibraEphemReq:
+			return infra.SIBRAEphemReq, pld.SibraMgmt.EphemReq, nil
+		case proto.SibraMgmt_Which_sibraEphemRep:
+			return infra.SIBRAEphemRep, pld.SibraMgmt.EphemRep, nil
+		case proto.SibraMgmt_Which_sibraSteadyReg:
+			return infra.SIBRASteadyReg, pld.SibraMgmt.SteadyReg, nil
+		case proto.SibraMgmt_Which_sibraSteadyReq:
+			return infra.SIBRASteadyReq, pld.SibraMgmt.SteadyReq, nil
+		case proto.SibraMgmt_Which_sibraSteadyRep:
+			return infra.SIBRASteadyRep, pld.SibraMgmt.SteadyRep, nil
+		default:
+			return infra.None, nil,
+				common.NewBasicError("Unsupported SignedPld.CtrlPld.SibraMgmt.Xxx message type",
 					nil, "capnp_which", pld.PathMgmt.Which)
 		}
 	default:

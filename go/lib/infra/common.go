@@ -25,6 +25,7 @@ import (
 	"github.com/scionproto/scion/go/lib/crypto/trc"
 	"github.com/scionproto/scion/go/lib/ctrl/cert_mgmt"
 	"github.com/scionproto/scion/go/lib/ctrl/path_mgmt"
+	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
 	"github.com/scionproto/scion/go/proto"
 )
 
@@ -128,6 +129,13 @@ const (
 	PathSegmentReply
 	ChainIssueRequest
 	ChainIssueReply
+	SIBRAExtPkt
+	SIBRAEphemReq
+	SIBRAEphemRep
+	SIBRASteadyReq
+	SIBRASteadyRep
+	SIBRASteadyReg
+	SIBRASteadyRegRep
 )
 
 func (mt MessageType) String() string {
@@ -150,6 +158,20 @@ func (mt MessageType) String() string {
 		return "ChainIssueRequest"
 	case ChainIssueReply:
 		return "ChainIssueReply"
+	case SIBRAExtPkt:
+		return "SIBRAExternalPacket"
+	case SIBRAEphemReq:
+		return "SIBRAEphemeralRequest"
+	case SIBRAEphemRep:
+		return "SIBRAEphemeralReply"
+	case SIBRASteadyReq:
+		return "SIBRASteadyRequest"
+	case SIBRASteadyRep:
+		return "SIBRASteadyReply"
+	case SIBRASteadyReg:
+		return "SIBRASteadyRegistration"
+	case SIBRASteadyRegRep:
+		return "SIBRASteadyRegistrationReply"
 	default:
 		return fmt.Sprintf("Unknown (%d)", mt)
 	}
@@ -167,6 +189,18 @@ type Messenger interface {
 	RequestChainIssue(ctx context.Context, msg *cert_mgmt.ChainIssReq, a net.Addr,
 		id uint64) (*cert_mgmt.ChainIssRep, error)
 	SendChainIssueReply(ctx context.Context, msg *cert_mgmt.ChainIssRep, a net.Addr,
+		id uint64) error
+	SendSibraEphemReq(ctx context.Context, msg *sibra_mgmt.EphemReq, a net.Addr,
+		id uint64) error
+	SendSibraEphemRep(ctx context.Context, msg *sibra_mgmt.EphemRep, a net.Addr,
+		id uint64) error
+	GetSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyReq, a net.Addr,
+		id uint64) (*sibra_mgmt.SteadyRep, error)
+	SendSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyRep, a net.Addr,
+		id uint64) error
+	RegisterSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyReg, a net.Addr,
+		id uint64) (*sibra_mgmt.SteadyRegRep, error)
+	AckRegisterSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyRegRep, a net.Addr,
 		id uint64) error
 	AddHandler(msgType MessageType, h Handler)
 	ListenAndServe()

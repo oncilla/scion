@@ -115,3 +115,23 @@ func AddrHdrLen(dst addr.HostAddr, src addr.HostAddr) int {
 	addrLen := addr.IABytes*2 + dst.Size() + src.Size()
 	return addrLen + util.CalcPadding(addrLen, common.LineLen)
 }
+
+func (s *ScnPkt) GetExtn(t common.ExtnType) []common.Extension {
+	switch t.Class {
+	case common.HopByHopClass:
+		return searchExtn(t, s.HBHExt)
+	case common.End2EndClass:
+		return searchExtn(t, s.E2EExt)
+	}
+	return nil
+}
+
+func searchExtn(t common.ExtnType, all []common.Extension) []common.Extension {
+	var extns []common.Extension
+	for _, v := range all {
+		if v.Type() == t {
+			extns = append(extns, v)
+		}
+	}
+	return extns
+}

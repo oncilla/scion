@@ -108,13 +108,14 @@ COMMON_DIR = 'endhost'
 ZOOKEEPER_HOST_TMPFS_DIR = "/run/shm/host-zk"
 ZOOKEEPER_TMPFS_DIR = "/run/shm/scion-zk"
 
-DEFAULT_LINK_BW = 1000
+DEFAULT_LINK_BW = 1000000000
 
 DEFAULT_BEACON_SERVERS = 1
 DEFAULT_CERTIFICATE_SERVER = "py"
 DEFAULT_GRACE_PERIOD = 18000
 DEFAULT_CERTIFICATE_SERVERS = 1
 DEFAULT_PATH_SERVERS = 1
+DEFAULT_SIBRA_SERVERS = 1
 
 DEFAULT_TRC_VALIDITY = 365 * 24 * 60 * 60
 DEFAULT_CORE_CERT_VALIDITY = 364 * 24 * 60 * 60
@@ -136,6 +137,7 @@ SCION_SERVICE_NAMES = (
     "CertificateService",
     "BorderRouters",
     "PathService",
+    "SibraService",
 )
 
 DEFAULT_KEYGEN_ALG = 'ed25519'
@@ -151,7 +153,8 @@ class ConfigGenerator(object):
                  path_policy_file=DEFAULT_PATH_POLICY_FILE,
                  zk_config_file=DEFAULT_ZK_CONFIG, network=None,
                  use_mininet=False, use_docker=False, bind_addr=GENERATE_BIND_ADDRESS,
-                 pseg_ttl=DEFAULT_SEGMENT_TTL, cs=DEFAULT_CERTIFICATE_SERVER):
+                 pseg_ttl=DEFAULT_SEGMENT_TTL, cs=DEFAULT_CERTIFICATE_SERVER,
+        sibra=False):
         """
         Initialize an instance of the class ConfigGenerator.
 
@@ -165,6 +168,7 @@ class ConfigGenerator(object):
         :param bool use_docker: Create a docker-compose config
         :param int pseg_ttl: The TTL for path segments (in seconds)
         :param string cs: Use go or python implementation of certificate server
+        :param sibra: Create SIBRA servers
         """
         self.ipv6 = ipv6
         self.out_dir = out_dir
@@ -181,6 +185,7 @@ class ConfigGenerator(object):
         self.pseg_ttl = pseg_ttl
         self._read_defaults(network)
         self.cs = cs
+        self.sibra = sibra
         if self.docker and self.cs is not DEFAULT_CERTIFICATE_SERVER:
             logging.critical("Cannot use non-default CS with docker!")
             sys.exit(1)
@@ -219,7 +224,8 @@ class ConfigGenerator(object):
         self._ensure_uniq_ases()
         ca_private_key_files, ca_cert_files, ca_certs = self._generate_cas()
         cert_files, trc_files, cust_files = self._generate_certs_trcs(ca_certs)
-        topo_dicts, zookeepers, networks, prv_networks = self._generate_topology()
+        topo_dicts, zookeepers, networks, prv_networks, ifid_map = self._generate_topology()
+        sibra_files = self._generate_sibra_settings(ifid_map)
         if self.docker:
             self._generate_docker(topo_dicts)
         else:
@@ -230,6 +236,7 @@ class ConfigGenerator(object):
         self._write_trust_files(topo_dicts, cert_files)
         self._write_trust_files(topo_dicts, trc_files)
         self._write_cust_files(topo_dicts, cust_files)
+        self._write_sibra_files(topo_dicts, sibra_files)
         self._write_conf_policies(topo_dicts)
         self._write_networks_conf(networks, NETWORKS_FILE)
         if self.gen_bind_addr:
@@ -252,6 +259,12 @@ class ConfigGenerator(object):
         certgen = CertGenerator(self.topo_config, ca_certs)
         return certgen.generate()
 
+    def _generate_sibra_settings(self, ifid_map):
+        if self.sibra:
+            sibra_gen = SibraGenerator(self.topo_config, ifid_map)
+            return sibra_gen.generate()
+        return defaultdict(dict)
+
     def _generate_topology(self):
         if self.ipv6:
             overlay = 'UDP/IPv6'
@@ -264,7 +277,7 @@ class ConfigGenerator(object):
 
     def _generate_supervisor(self, topo_dicts):
         super_gen = SupervisorGenerator(
-            self.out_dir, topo_dicts, self.mininet, self.cs)
+            self.out_dir, topo_dicts, self.mininet, self.cs, self.sibra)
         super_gen.generate()
 
     def _generate_docker(self, topo_dicts):
@@ -296,6 +309,13 @@ class ConfigGenerator(object):
             base = topo_id.base_dir(self.out_dir)
             for elem in as_topo["CertificateService"]:
                 for path, value in cust_files[topo_id].items():
+                    write_file(os.path.join(base, elem, path), value)
+
+    def _write_sibra_files(self, topo_dicts, sibra_files):
+        for topo_id, as_topo in topo_dicts.items():
+            base = topo_id.base_dir(self.out_dir)
+            for elem in as_topo["SibraService"]:
+                for path, value in sibra_files[topo_id].items():
                     write_file(os.path.join(base, elem, path), value)
 
     def _write_conf_policies(self, topo_dicts):
@@ -491,6 +511,66 @@ class CertGenerator(object):
         self.trc_files[topo_id][trc_path] = str(trc)
 
 
+class SibraGenerator(object):
+    def __init__(self, topo_config, ifid_map):
+        self.topo_config = topo_config
+        self.ifid_map = ifid_map
+
+        self.ifids = defaultdict(set)
+        self.traffic_matrix = defaultdict(dict)
+        self.reservations = defaultdict(dict)
+        self.sibra_files = defaultdict(dict)
+
+    def generate(self):
+        self._iterate(self._gen_ifids)
+        self._iterate(self._gen_traffic_matrix)
+        self._iterate(self._gen_reservation)
+        self._iterate(self._gen_sibra_file)
+        return self.sibra_files
+
+    def _iterate(self, f):
+        for isd_as, as_conf in self.topo_config["ASes"].items():
+            f(TopoID(isd_as), as_conf)
+
+    def _gen_ifids(self, topo_id, as_conf):
+        for k in self.ifid_map[str(topo_id)]:
+            self.ifids[topo_id].add(int(k.split()[1]))
+        self.ifids[topo_id].add(0)
+
+    def _gen_traffic_matrix(self, topo_id, as_conf):
+        bw = int(DEFAULT_LINK_BW/(len(self.ifids[topo_id])-1))
+        d = self.traffic_matrix[topo_id]
+        for inIfid in self.ifids[topo_id]:
+            d[inIfid] = dict()
+            for egIfid in self.ifids[topo_id].difference({inIfid}):
+                d[inIfid][egIfid] = bw
+
+    def _gen_reservation(self, topo_id, as_conf):
+        issuer = TopoID(as_conf.get('cert_issuer', str(topo_id)))
+        if issuer != topo_id:
+            up = {
+                "IA": str(issuer),
+                "PathPredicate": "%s#0" % issuer,
+                "PathType": "Up",
+                "MinSize": 1,
+                "DesiredSize": 27,
+                "MaxSize": 30,
+                "RatioClass": 0,
+            }
+            down = up.copy()
+            down["PathType"] = "Down"
+            self.reservations[topo_id]["Up-%s" % issuer] = up
+            self.reservations[topo_id]["Down-%s" % issuer] = down
+
+    def _gen_sibra_file(self, topo_id, as_conf):
+        path_mat = os.path.join("", "sibra", "matrix.yml")
+        path_resv = os.path.join("", "sibra", "reservations.json")
+        self.sibra_files[topo_id][path_mat] = yaml.dump(
+            self.traffic_matrix[topo_id], default_flow_style=False)
+        self.sibra_files[topo_id][path_resv] = json.dumps(
+            self.reservations[topo_id], sort_keys=True, indent=2)
+
+
 class CA_Generator(object):
     def __init__(self, topo_config):
         self.topo_config = topo_config
@@ -612,7 +692,7 @@ class TopoGenerator(object):
         self._write_as_list()
         self._write_ifids()
         self._write_overlay()
-        return self.topo_dicts, self.zookeepers, networks, prv_networks
+        return self.topo_dicts, self.zookeepers, networks, prv_networks, self.ifid_map
 
     def _read_links(self):
         br_ids = defaultdict(int)
@@ -662,6 +742,7 @@ class TopoGenerator(object):
             ("certificate_servers", DEFAULT_CERTIFICATE_SERVERS, "cs",
              "CertificateService"),
             ("path_servers", DEFAULT_PATH_SERVERS, "ps", "PathService"),
+            ("sibra_servers", DEFAULT_SIBRA_SERVERS, "sb", "SibraService"),
         ):
             self._gen_srv_entry(
                 topo_id, as_conf, conf_key, def_num, nick, topo_key)
@@ -839,11 +920,12 @@ class PrometheusGenerator(object):
 
 
 class SupervisorGenerator(object):
-    def __init__(self, out_dir, topo_dicts, mininet, cs):
+    def __init__(self, out_dir, topo_dicts, mininet, cs, sibra):
         self.out_dir = out_dir
         self.topo_dicts = topo_dicts
         self.mininet = mininet
         self.cs = cs
+        self.sibra = sibra
 
     def generate(self):
         self._write_dispatcher_conf()
@@ -859,6 +941,7 @@ class SupervisorGenerator(object):
         ):
             entries.extend(self._std_entries(topo, key, cmd, base))
         entries.extend(self._cs_entries(topo, base))
+        entries.extend(self._sibra_entries(topo, base))
         entries.extend(self._br_entries(topo, "bin/border", base))
         self._write_as_conf(topo_id, entries)
 
@@ -883,10 +966,18 @@ class SupervisorGenerator(object):
     def _cs_entries(self, topo, base):
         if self.cs == "py":
             return self._std_entries(topo, "CertificateService", "python/bin/cert_server", base)
+        return self._go_infra_entries(topo, "CertificateService", "bin/cert_srv", base)
+
+    def _sibra_entries(self, topo, base):
+        if self.sibra:
+            return self._go_infra_entries(topo, "SibraService", "bin/sibra_srv", base)
+        return []
+
+    def _go_infra_entries(self, topo, topo_key, cmd, base):
         entries = []
-        for k, v in topo.get("CertificateService", {}).items():
+        for k, v in topo.get(topo_key, {}).items():
             conf_dir = os.path.join(base, k)
-            entries.append((k, ["bin/cert_srv", "-id=%s" % k, "-confd=%s" % conf_dir,
+            entries.append((k, [cmd, "-id=%s" % k, "-confd=%s" % conf_dir,
                                 "-prom=%s" % _prom_addr_infra(v), "-sciond",
                                 get_default_sciond_path(ISD_AS(topo["ISD_AS"]))]))
         return entries
@@ -934,7 +1025,7 @@ class SupervisorGenerator(object):
             dp['environment'] += ',DISPATCHER_ID="%s"' % elem
             config["program:%s" % dp_name] = dp
             self._write_zlog_cfg("dispatcher", dp_name, elem_dir)
-        if elem.startswith("cs"):
+        if elem.startswith("cs") or elem.startswith("sb"):
             if self.mininet:
                 # Start a sciond for every CS element under mininet.
                 sd_name = "sd-" + elem
@@ -1428,10 +1519,13 @@ def main():
                         help='Path segment TTL (in seconds)')
     parser.add_argument('-cs', '--cert-server', default=DEFAULT_CERTIFICATE_SERVER,
                         help='Certificate Server implementation to use ("go" or "py")')
+    parser.add_argument('-sibra', '--sibra', action='store_true',
+                        help='Generate SIBRA service')
     args = parser.parse_args()
     confgen = ConfigGenerator(
         args.ipv6, args.output_dir, args.topo_config, args.path_policy, args.zk_config,
-        args.network, args.mininet, args.docker, args.bind_addr, args.pseg_ttl, args.cert_server)
+        args.network, args.mininet, args.docker, args.bind_addr, args.pseg_ttl, args.cert_server,
+        args.sibra)
     confgen.generate_all()
 
 

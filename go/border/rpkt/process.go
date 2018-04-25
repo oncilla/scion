@@ -28,6 +28,7 @@ import (
 	"github.com/scionproto/scion/go/lib/ctrl"
 	"github.com/scionproto/scion/go/lib/ctrl/ifid"
 	"github.com/scionproto/scion/go/lib/ctrl/path_mgmt"
+	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
 	"github.com/scionproto/scion/go/lib/l4"
 	"github.com/scionproto/scion/go/lib/scmp"
 	"github.com/scionproto/scion/go/lib/spkt"
@@ -136,6 +137,8 @@ func (rp *RtrPkt) processDestSelf() (HookResult, error) {
 		return rp.processIFID(pld)
 	case *path_mgmt.Pld:
 		return rp.processPathMgmtSelf(pld)
+	case *sibra_mgmt.Pld:
+		return rp.processSibraMgmtSelf(pld)
 	default:
 		rp.Error("Unsupported destination payload", "type", common.TypeOf(pld))
 		return HookError, nil

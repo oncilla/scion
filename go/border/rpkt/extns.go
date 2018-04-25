@@ -45,6 +45,8 @@ func (rp *RtrPkt) extnParseHBH(extType common.ExtnType,
 		return rSCMPExtFromRaw(rp, start, end)
 	case extType == common.ExtnOneHopPathType:
 		return rOneHopPathFromRaw(rp)
+	case extType == common.ExtnSIBRAType:
+		return rSibraExtnFromRaw(rp, start, end)
 	default:
 		// HBH not supported, so send an SCMP error in response.
 		return nil, common.NewBasicError(

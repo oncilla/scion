@@ -29,6 +29,7 @@ struct CtrlPld {
         drkeyMgmt @6 :DRKeyMgmt.DRKeyMgmt;
         sig @7 :SIG.SIGCtrl;
         extn @8 :CtrlExtn.CtrlExtnDataList;
+        sibraMgmt @11 :SIBRA.SibraMgmt;
     }
     reqId @9 :UInt64;
     traceId @10 :Data;

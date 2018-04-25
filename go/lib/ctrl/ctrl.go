@@ -23,6 +23,7 @@ import (
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/ctrl/cert_mgmt"
 	"github.com/scionproto/scion/go/lib/ctrl/path_mgmt"
+	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
 	"github.com/scionproto/scion/go/proto"
 )
 
@@ -53,6 +54,14 @@ func NewPathMgmtPld(u proto.Cerealizable, pathD *path_mgmt.Data, ctrlD *Data) (*
 // which in turn contains the supplied Cerealizable instance.
 func NewCertMgmtPld(u proto.Cerealizable, certD *cert_mgmt.Data, ctrlD *Data) (*Pld, error) {
 	cpld, err := cert_mgmt.NewPld(u, certD)
+	if err != nil {
+		return nil, err
+	}
+	return NewPld(cpld, ctrlD)
+}
+
+func NewSibraMgmtPld(u proto.Cerealizable, sibraD *sibra_mgmt.Data, ctrlD *Data) (*Pld, error) {
+	cpld, err := sibra_mgmt.NewPld(u, sibraD)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +105,21 @@ func (p *Pld) GetPathMgmt() (*path_mgmt.Pld, *Data, error) {
 			"expected", "*path_mgmt.Pld", "actual", common.TypeOf(u))
 	}
 	return pathP, p.Data, nil
+}
+
+// GetSibraMgmt returns the SibraMgmt payload and the CtrlPld's non-union Data.
+// If the union type is not SibraMgmt, an error is returned.
+func (p *Pld) GetSibraMgmt() (*sibra_mgmt.Pld, *Data, error) {
+	u, err := p.Union()
+	if err != nil {
+		return nil, nil, err
+	}
+	sibraP, ok := u.(*sibra_mgmt.Pld)
+	if !ok {
+		return nil, nil, common.NewBasicError("Non-matching ctrl pld contents", nil,
+			"expected", "*sibra_mgmt.Pld", "actual", common.TypeOf(u))
+	}
+	return sibraP, p.Data, nil
 }
 
 func (p *Pld) Len() int {

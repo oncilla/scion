@@ -1,0 +1,20 @@
+{
+    "Down-1-ff00:0:110": {
+        "DesiredSize": 27,
+        "IA": "1-ff00:0:110",
+        "MaxSize": 30,
+        "MinSize": 1,
+        "PathPredicate": "1-ff00:0:110#0",
+        "PathType": "Down",
+        "RatioClass": 0
+    },
+    "Up-1-ff00:0:110": {
+        "DesiredSize": 27,
+        "IA": "1-ff00:0:110",
+        "MaxSize": 30,
+        "MinSize": 1,
+        "PathPredicate": "1-ff00:0:110#0",
+        "PathType": "Up",
+        "RatioClass": 0
+    }
+}

@@ -58,6 +58,8 @@ type Router struct {
 	ifIDQ chan rpkt.IFIDCallbackArgs
 	// pktErrorQ is a channel for handling packet errors
 	pktErrorQ chan pktErrorArgs
+	// sibraQ is a channel for handling sibra request packets
+	sibraQ chan rpkt.SIBRACallbackArgs
 }
 
 func NewRouter(id, confDir string) (*Router, error) {
@@ -76,6 +78,7 @@ func (r *Router) Run() error {
 	go r.RevInfoFwd()
 	go r.IFIDFwd()
 	go r.PacketError()
+	go r.SIBRAFwd()
 	go r.confSig()
 	// TODO(shitz): Here should be some code to periodically check the discovery
 	// service for updated info.

@@ -64,9 +64,10 @@ func (r *Router) setup() error {
 	r.sRevInfoQ = make(chan rpkt.RawSRevCallbackArgs, 16)
 	r.ifIDQ = make(chan rpkt.IFIDCallbackArgs, 16)
 	r.pktErrorQ = make(chan pktErrorArgs, 16)
+	r.sibraQ = make(chan rpkt.SIBRACallbackArgs, 1<<10)
 
 	// Configure the rpkt package with the callbacks it needs.
-	rpkt.Init(r.RawSRevCallback, r.IFIDCallback)
+	rpkt.Init(r.RawSRevCallback, r.IFIDCallback, r.SIBRACallback)
 
 	// Add default posix setup hooks. If there are other hooks, they should install
 	// themselves via init(), so they appear before the posix ones.

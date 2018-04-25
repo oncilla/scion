@@ -190,6 +190,9 @@ func (c *Conn) read(b []byte, from bool) (int, *Addr, error) {
 			// https://github.com/scionproto/scion/issues/1659.
 			remote.NextHopHost = lastHop.Addr.Copy()
 			remote.NextHopPort = lastHop.Port
+			if remote.Sibra, err = getSibraExtn(pkt); err != nil {
+				return 0, nil, common.NewBasicError("Error sibra", err)
+			}
 		}
 		switch hdr := pkt.L4.(type) {
 		case *l4.UDP:
@@ -204,6 +207,20 @@ func (c *Conn) read(b []byte, from bool) (int, *Addr, error) {
 		}
 	}
 	return 0, nil, common.NewBasicError("Unknown network", nil, "net", c.net)
+}
+
+func getSibraExtn(pkt *spkt.ScnPkt) (common.Extension, error) {
+	sibra := pkt.GetExtn(common.ExtnSIBRAType)
+	if len(sibra) > 0 {
+		keep, err := sibra[0].Reverse()
+		if err != nil {
+			return nil, common.NewBasicError("Unable to reverse SIBRA extension", err)
+		}
+		if keep {
+			return sibra[0].Copy(), nil
+		}
+	}
+	return nil, nil
 }
 
 func (c *Conn) handleSCMP(hdr *scmp.Hdr, pkt *spkt.ScnPkt) {
@@ -273,11 +290,23 @@ func (c *Conn) write(b []byte, raddr *Addr) (int, error) {
 	defer c.writeMutex.Unlock()
 	var err error
 	var path *spath.Path
+	var usePath bool
+	var hbh []common.Extension
 	var nextHopHost addr.HostAddr
 	var nextHopPort uint16
 	// If src and dst are in the same AS, the path will be empty
 	if !c.laddr.IA.Eq(raddr.IA) {
-		if raddr.Path != nil && raddr.NextHopHost != nil && raddr.NextHopPort != 0 {
+		if raddr.SibraResv != nil {
+			raddr.Sibra, usePath = raddr.SibraResv.Load().GetExtn()
+		}
+		if raddr.Sibra != nil && raddr.NextHopHost != nil && raddr.NextHopPort != 0 {
+			if usePath {
+				path = raddr.Path
+			}
+			hbh = append(hbh, raddr.Sibra)
+			nextHopHost = raddr.NextHopHost
+			nextHopPort = raddr.NextHopPort
+		} else if raddr.Path != nil && raddr.NextHopHost != nil && raddr.NextHopPort != 0 {
 			path = raddr.Path
 			nextHopHost = raddr.NextHopHost
 			nextHopPort = raddr.NextHopPort
@@ -310,6 +339,7 @@ func (c *Conn) write(b []byte, raddr *Addr) (int, error) {
 		DstHost: raddr.Host,
 		SrcHost: c.laddr.Host,
 		Path:    path,
+		HBHExt:  hbh,
 		L4:      udpHdr,
 		Pld:     common.RawBytes(b),
 	}
@@ -322,7 +352,7 @@ func (c *Conn) write(b []byte, raddr *Addr) (int, error) {
 
 	// Construct overlay next-hop
 	var appAddr reliable.AppAddr
-	if path == nil {
+	if path == nil && raddr.Sibra == nil {
 		// Overlay next-hop is destination
 		appAddr = reliable.AppAddr{
 			Addr: pkt.DstHost,

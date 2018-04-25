@@ -24,6 +24,7 @@ import (
 	"github.com/scionproto/scion/go/lib/crypto/trc"
 	"github.com/scionproto/scion/go/lib/ctrl/cert_mgmt"
 	"github.com/scionproto/scion/go/lib/ctrl/path_mgmt"
+	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
 	"github.com/scionproto/scion/go/lib/infra"
 	"github.com/scionproto/scion/go/proto"
 )
@@ -84,6 +85,41 @@ func (m *MockMessenger) SendCertChain(ctx context.Context, msg *cert_mgmt.Chain,
 func (m *MockMessenger) GetPathSegs(ctx context.Context, msg *path_mgmt.SegReq, a net.Addr,
 	id uint64) (*path_mgmt.SegReply, error) {
 
+	panic("not implemented")
+}
+
+func (m *MockMessenger) SendSibraEphemReq(ctx context.Context, msg *sibra_mgmt.EphemReq, a net.Addr,
+	id uint64) error {
+
+	panic("not implemented")
+}
+
+func (m *MockMessenger) SendSibraEphemRep(ctx context.Context, msg *sibra_mgmt.EphemRep, a net.Addr,
+	id uint64) error {
+
+	panic("not implemented")
+}
+
+func (m *MockMessenger) GetSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyReq, a net.Addr,
+	id uint64) (*sibra_mgmt.SteadyRep, error) {
+
+	panic("not implemented")
+}
+
+func (m *MockMessenger) SendSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyRep, a net.Addr,
+	id uint64) error {
+
+	panic("not implemented")
+}
+
+func (m *MockMessenger) RegisterSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyReg,
+	a net.Addr, id uint64) (*sibra_mgmt.SteadyRegRep, error) {
+
+	panic("not implemented")
+}
+
+func (m *MockMessenger) AckRegisterSibraSteady(ctx context.Context, msg *sibra_mgmt.SteadyRegRep,
+	a net.Addr, id uint64) error {
 	panic("not implemented")
 }
 

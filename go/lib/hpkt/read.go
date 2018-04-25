@@ -19,6 +19,7 @@ import (
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/l4"
 	"github.com/scionproto/scion/go/lib/scmp"
+	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/spath"
 	"github.com/scionproto/scion/go/lib/spkt"
 	"github.com/scionproto/scion/go/lib/util"
@@ -212,11 +213,30 @@ func (p *parseCtx) DefaultHBHExtParser() error {
 				"type", extn.Class(), "position", p.hbhCounter-1)
 		}
 		p.s.HBHExt = append(p.s.HBHExt, extn)
+	case common.ExtnSIBRAType.Type:
+		raw := p.b[p.offset+common.ExtnSubHdrLen : p.extHdrOffsets.end]
+		base, err := sbextn.BaseFromRaw(raw)
+		if err != nil {
+			return common.NewBasicError("Unable to parse SIBRA base extension", err)
+		}
+		switch {
+		case base.Steady:
+			extn, err := sbextn.SteadyFromBase(base, raw)
+			if err != nil {
+				return common.NewBasicError("Unable to parse SIBRA steady extension", err)
+			}
+			p.s.HBHExt = append(p.s.HBHExt, extn)
+		case !base.Steady:
+			extn, err := sbextn.EphemeralFromBase(base, raw)
+			if err != nil {
+				return common.NewBasicError("Unable to parse SIBRA ephemeral extension", err)
+			}
+			p.s.HBHExt = append(p.s.HBHExt, extn)
+		}
 	default:
 		return common.NewBasicError("Unsupported HBH extension type", nil,
 			"type", extnType, "position", p.hbhCounter-1)
 	}
-
 	p.offset = p.extHdrOffsets.end
 	return nil
 }

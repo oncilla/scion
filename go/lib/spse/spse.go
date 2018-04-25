@@ -34,7 +34,7 @@ import (
 
 var _ common.Extension = (*Extn)(nil)
 
-// BaseExtn is the base for Extn, scmp_auth.DRKeyExt and scmp_auth.HashTreeExt
+// Base is the base for Extn, scmp_auth.DRKeyExt and scmp_auth.HashTreeExt
 type BaseExtn struct {
 	// SecMode indicates the security mode of the extension.
 	SecMode SecMode

@@ -44,6 +44,8 @@ type Conf struct {
 	ASConf *as_conf.ASConf
 	// HFMacPool is the pool of Hop Field MAC generation instances.
 	HFMacPool sync.Pool
+	// SOFMacPool is the pool for SIBRA OpField MAC generation.
+	SOFMacPool sync.Pool
 	// Net is the network configuration of this router.
 	Net *netconf.NetConf
 	// Dir is the configuration directory.
@@ -89,6 +91,17 @@ func Load(id, confDir string) (*Conf, error) {
 	conf.HFMacPool = sync.Pool{
 		New: func() interface{} {
 			mac, _ := util.InitMac(hfGenKey)
+			return mac
+		},
+	}
+
+	sofGenKey := pbkdf2.Key(conf.ASConf.MasterASKey, []byte("Derive SOF Key"), 1000, 16, sha256.New)
+	if _, err := util.InitMac(sofGenKey); err != nil {
+		return nil, err
+	}
+	conf.SOFMacPool = sync.Pool{
+		New: func() interface{} {
+			mac, _ := util.InitMac(sofGenKey)
 			return mac
 		},
 	}

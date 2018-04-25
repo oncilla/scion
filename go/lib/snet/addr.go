@@ -24,6 +24,7 @@ import (
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/spath"
+	"github.com/scionproto/scion/go/sibrad/syncresv"
 )
 
 var _ net.Addr = (*Addr)(nil)
@@ -37,6 +38,8 @@ type Addr struct {
 	Host        addr.HostAddr
 	L4Port      uint16
 	Path        *spath.Path
+	SibraResv   *syncresv.Store
+	Sibra       common.Extension
 	NextHopHost addr.HostAddr
 	NextHopPort uint16
 }
@@ -57,8 +60,8 @@ func (a *Addr) Desc() string {
 	if a == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("%s Path: %t NextHop: [%v]:%d",
-		a, a.Path != nil, a.NextHopHost, a.NextHopPort)
+	return fmt.Sprintf("%s Path: %t Sibra: %t NextHop: [%v]:%d",
+		a, a.Path != nil, a.Sibra != nil, a.NextHopHost, a.NextHopPort)
 }
 
 // EqAddr compares the IA/Host/L4port values with the supplied Addr
@@ -88,6 +91,11 @@ func (a *Addr) Copy() *Addr {
 	if a.Path != nil {
 		newA.Path = a.Path.Copy()
 	}
+	// XXX(roosd): dirty hack
+	newA.SibraResv = a.SibraResv
+	if a.Sibra != nil {
+		newA.Sibra = a.Sibra.Copy()
+	}
 	if a.NextHopHost != nil {
 		newA.NextHopHost = a.NextHopHost.Copy()
 	}
@@ -109,7 +117,7 @@ func (a *Addr) UnmarshalText(text []byte) error {
 
 func (a *Addr) IsZero() bool {
 	return a.IA.IsZero() && a.Host == nil && a.L4Port == 0 && a.Path == nil &&
-		a.NextHopHost == nil && a.NextHopPort == 0
+		a.Sibra == nil && a.NextHopHost == nil && a.NextHopPort == 0
 }
 
 // AddrFromString converts an address string of format isd-as,[ipaddr]:port

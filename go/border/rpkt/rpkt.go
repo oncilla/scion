@@ -46,13 +46,17 @@ const pktBufSize = 9 * 1024
 var callbacks struct {
 	rawSRevF func(RawSRevCallbackArgs)
 	ifIDF    func(IFIDCallbackArgs)
+	sibraF   func(args SIBRACallbackArgs)
 }
 
 // Init takes callback functions provided by the router and stores them for use
 // by the rpkt package.
-func Init(rawSRevF func(RawSRevCallbackArgs), ifIDF func(IFIDCallbackArgs)) {
+func Init(rawSRevF func(RawSRevCallbackArgs), ifIDF func(IFIDCallbackArgs),
+	sibraF func(args SIBRACallbackArgs)) {
+
 	callbacks.rawSRevF = rawSRevF
 	callbacks.ifIDF = ifIDF
+	callbacks.sibraF = sibraF
 }
 
 // Router representation of SCION packet, including metadata.  The comments for the members have
@@ -103,6 +107,8 @@ type RtrPkt struct {
 	ifNext *common.IFIDType
 	// consDirFlag indicates if the packet is currently on a down path. (PARSE)
 	consDirFlag *bool
+	// ignorePath indicates if path shall be considered (PARSE)
+	ignorePath bool
 	// HBHExt is the list of Hop-by-hop extensions, if any. (PARSE)
 	HBHExt []rExtension
 	// E2EExt is the list of end2end extensions, if any. (PARSE, only if needed)
