@@ -18,25 +18,23 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra"
 )
 
-type Request interface {
-	EphemID() sibra.ID
+type Data interface {
 	Steady() bool
-	GetBase() *Base
-	NumHops() int
 	Len() int
+	Type() DataType
 	Write(common.RawBytes) error
-	Reverse() (Request, error)
+	Reverse() (Data, error)
 	fmt.Stringer
 }
 
-// RequestType indicates the type of the request.
-type RequestType uint8
+// DataType indicates the type of the request.
+type DataType uint8
 
 const (
-	RSteadySetup RequestType = iota
+	RSteadySetup DataType = iota
+	RSteadySetupTelescope
 	RSteadyRenewal
 	RSteadyTearDown
 	RSteadyConfIndex
@@ -47,14 +45,16 @@ const (
 )
 
 // Steady indicates if the request is related to a steady reservation.
-func (t RequestType) Steady() bool {
+func (t DataType) Steady() bool {
 	return t <= RSteadyCleanUp
 }
 
-func (t RequestType) String() string {
+func (t DataType) String() string {
 	switch t {
 	case RSteadySetup:
 		return "Steady Setup"
+	case RSteadySetupTelescope:
+		return "Steady Setup Telescope"
 	case RSteadyRenewal:
 		return "Steady Renewal"
 	case RSteadyTearDown:

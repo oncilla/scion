@@ -16,19 +16,19 @@ package sbreq
 
 import (
 	"fmt"
+	"hash"
 
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
-var _ Request = (*SteadySucc)(nil)
+var _ Data = (*SteadySucc)(nil)
 
 // SteadySucc is the response for a successful steady reservation request.
 // It contains the reservation block.
 //
 // 0B       1        2        3        4        5        6        7
-// +--------+--------+--------+--------+--------+--------+--------+--------+
-// | base   |          padding                                             |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 // | Reservation Info                                                      |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
@@ -37,54 +37,34 @@ var _ Request = (*SteadySucc)(nil)
 // |...                                                                    |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 type SteadySucc struct {
-	*Base
 	// Block is the reservation block.
 	Block *sbresv.Block
+	// DataType is the data type.
+	DataType DataType
 }
 
-func SteadySuccFromRaw(raw common.RawBytes, numHops int) (*SteadySucc, error) {
-	b, err := BaseFromRaw(raw)
-	if err != nil {
-		return nil, err
-	}
-	return SteadySuccFromBase(b, raw, numHops)
-}
-
-func SteadySuccFromBase(b *Base, raw common.RawBytes, numHops int) (*SteadySucc, error) {
-	if b.Type != RSteadySetup && b.Type != RSteadyRenewal {
-		return nil, common.NewBasicError("Invalid request type", nil, "type", b.Type)
-	}
-	if !b.Response {
-		return nil, common.NewBasicError("Response flag must be set", nil)
-	}
-	if !b.Accepted {
-		return nil, common.NewBasicError("Accepted flag must be set", nil)
-	}
+func SteadySuccFromRaw(raw common.RawBytes, t DataType, numHops int) (*SteadySucc, error) {
 	if len(raw) <= common.LineLen {
 		return nil, common.NewBasicError("Invalid steady reservation response length", nil,
 			"min", common.LineLen, "actual", len(raw))
 	}
-	block, err := sbresv.BlockFromRaw(raw[common.LineLen:], numHops)
+	block, err := sbresv.BlockFromRaw(raw, numHops)
 	if err != nil {
 		return nil, err
 	}
-	return &SteadySucc{Base: b, Block: block}, nil
-}
-
-func NewSteadySuccFromReq(r *SteadyReq) (*SteadySucc, error) {
-	if !r.Accepted {
-		return nil, common.NewBasicError("Unable to create steady reservation "+
-			"response from failed request", nil)
-	}
 	s := &SteadySucc{
-		Block: sbresv.NewBlock(r.Info, r.NumHops()),
-		Base: &Base{
-			Type:     r.Base.Type,
-			Accepted: true,
-			Response: true,
-		},
+		Block:    block,
+		DataType: t,
 	}
 	return s, nil
+}
+
+func (r *SteadySucc) SetSOF(mac hash.Hash, ids []sibra.ID, plens []uint8,
+	inIFID, egIFID common.IFIDType, sofIdx int) error {
+
+	r.Block.SOFields[sofIdx].Ingress = inIFID
+	r.Block.SOFields[sofIdx].Egress = egIFID
+	return r.Block.SetMac(mac, sofIdx, ids, plens)
 }
 
 func (r *SteadySucc) Steady() bool {
@@ -96,7 +76,11 @@ func (r *SteadySucc) NumHops() int {
 }
 
 func (r *SteadySucc) Len() int {
-	return common.LineLen + r.Block.Len()
+	return r.Block.Len()
+}
+
+func (r *SteadySucc) Type() DataType {
+	return r.DataType
 }
 
 func (r *SteadySucc) Write(b common.RawBytes) error {
@@ -104,18 +88,14 @@ func (r *SteadySucc) Write(b common.RawBytes) error {
 		return common.NewBasicError("Buffer to short", nil, "method", "sbreq.SteadySucc.Write",
 			"min", r.Len(), "actual", len(b))
 	}
-	if err := r.Base.Write(b); err != nil {
-		return err
-	}
-	return r.Block.Write(b[common.LineLen:])
+	return r.Block.Write(b)
 }
 
-func (r *SteadySucc) Reverse() (Request, error) {
-	return nil, common.NewBasicError("Reversing not supported", nil,
-		"response", r.Response, "accepted", r.Accepted)
+func (r *SteadySucc) Reverse() (Data, error) {
+	return nil, common.NewBasicError("Cannot reverse steady success", nil)
 }
 
 func (r *SteadySucc) String() string {
-	return fmt.Sprintf("Base: [%s] Block: [%s]", r.Base, r.Block)
+	return fmt.Sprintf("Block: [%s]", r.Block)
 
 }

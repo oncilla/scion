@@ -32,7 +32,7 @@ func admitSteady(s sbalgo.Algo, p sbalgo.AdmParams, topo *topology.Topo) (sbalgo
 
 	// Available already makes sure that mBw cannot be larger
 	// than capacity of the in or out link.
-	avail := s.Available(p.Ifids, p.Extn.ReqID)
+	avail := s.Available(p.Ifids, p.Extn.GetCurrID())
 	ideal := s.Ideal(p)
 	// TODO(roosd): remove
 	doLog := false
@@ -45,10 +45,10 @@ func admitSteady(s sbalgo.Algo, p sbalgo.AdmParams, topo *topology.Topo) (sbalgo
 	res := sbalgo.SteadyRes{
 		MaxBw: avail.ToBwCls(true),
 	}
-	if res.MaxBw < p.Req.MinBw || !p.Req.Accepted {
+	if res.MaxBw < p.Req.MinBw || !p.Accepted {
 		return res, nil
 	}
-	res.AllocBw = minBwCls(res.MaxBw, p.Req.Info.BwCls)
+	res.AllocBw = minBwCls(res.MaxBw, p.Req.AccBw)
 	if err := s.AddSteadyResv(p, res.AllocBw); err != nil {
 		return sbalgo.SteadyRes{}, err
 	}
@@ -61,7 +61,7 @@ func admitSteady(s sbalgo.Algo, p sbalgo.AdmParams, topo *topology.Topo) (sbalgo
 }
 
 func logInfo(m string, p sbalgo.AdmParams, avail, ideal sibra.Bps, s sbalgo.Algo) {
-	log.Info(m, "id", p.Extn.ReqID, "\navail", avail, "ideal", ideal,
+	log.Info(m, "id", p.Extn.GetCurrID(), "\navail", avail, "ideal", ideal,
 		"req", p.Req.MaxBw.Bps(), "ifids", p.Ifids, "\nState", s)
 
 }

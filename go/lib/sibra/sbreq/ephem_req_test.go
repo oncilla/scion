@@ -28,11 +28,7 @@ import (
 func Test_Fail(t *testing.T) {
 	Convey("NewSteadyReq should return correct request", t, func() {
 		req := &EphemReq{
-			Base: &Base{
-				Type:     REphmSetup,
-				Accepted: true,
-			},
-			ReqID: sibra.NewEphemID(addr.AS(0), nil),
+			ID: sibra.NewEphemID(addr.AS(0), nil),
 			Block: &sbresv.Block{
 				Info:     &sbresv.Info{},
 				SOFields: make([]*sbresv.SOField, 10),

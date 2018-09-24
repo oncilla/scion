@@ -60,13 +60,7 @@ func SteadyFromBase(base *Base, raw common.RawBytes) (*Steady, error) {
 		return nil, err
 	}
 	switch {
-	case s.IsRequest:
-		if err := s.parseRequest(raw[off:]); err != nil {
-			return nil, common.NewBasicError("Unable to parse request", err,
-				"raw", raw, "off", off, "len", len(raw)-off)
-		}
-		return s, nil
-	case s.BestEffort:
+	case s.BestEffort || s.IsRequest:
 		if off != len(raw) {
 			return nil, common.NewBasicError(InvalidExtnLength, nil,
 				"extn", s, "expected", off, "actual", len(raw))
@@ -109,20 +103,19 @@ func (s *Steady) ValidatePath() error {
 }
 
 // ToRequest modifies the steady extension and adds the provided request.
-func (s *Steady) ToRequest(r sbreq.Request) error {
+func (s *Steady) ToRequest(p *sbreq.Pld) error {
 	if s.Steady && s.Setup {
 		return common.NewBasicError("Steady setup requests cannot be transformed", nil)
 	}
-	if r.Steady() && r.NumHops() != s.ActiveBlocks[0].NumHops() {
+	if p.Data.Steady() && int(p.NumHops) != s.ActiveBlocks[0].NumHops() {
 		return common.NewBasicError("NumHops in SOFields and request mismatch", nil,
-			"offer", r.NumHops(), "sof", s.ActiveBlocks[0].NumHops())
+			"numHops", p.NumHops, "tokenHops", s.ActiveBlocks[0].NumHops())
 	}
-	if !r.Steady() && r.NumHops() != s.TotalHops {
+	if !p.Data.Steady() && int(p.NumHops) != s.TotalHops {
 		return common.NewBasicError("NumHops in SOFields and request mismatch", nil,
-			"offer", r.NumHops(), "sof", s.TotalHops)
+			"numHops", p.NumHops, "totalHops", s.TotalHops)
 	}
 	s.IsRequest = true
-	s.Request = r
 	s.BestEffort = false
 	return nil
 }
@@ -137,17 +130,6 @@ func (s *Steady) Copy() common.Extension {
 		assert.Must(err == nil, "Parsing must not fail")
 	}
 	return c
-}
-
-func (s *Steady) Reverse() (bool, error) {
-	if s.Request != nil {
-		rev, err := s.Request.Reverse()
-		if err != nil {
-			return false, common.NewBasicError("Unable to reverse steady extension", err)
-		}
-		s.Request = rev
-	}
-	return s.Base.Reverse()
 }
 
 func (s *Steady) String() string {

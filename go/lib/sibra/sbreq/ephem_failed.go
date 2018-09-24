@@ -23,18 +23,18 @@ import (
 )
 
 const (
-	offFailCode = common.LineLen - 2
-	offEphmLen  = common.LineLen - 1
+	offEphemFailedDataLen = sbresv.InfoLen
+	offEphemFailedHop     = offEphemFailedDataLen + 2
+	offEphemFailedCode    = offEphemFailedHop + 1
+	offEphemFailedOffers  = offEphemFailedHop + 1
 )
 
-var _ Request = (*EphemReq)(nil)
+var _ Data = (*EphemFailed)(nil)
 
 // EphemFailed holds a failed SIBRA ephemeral reservation requests.
 // In case it is for a setup request, it contains the reservation id.
 //
 // 0B       1        2        3        4        5        6        7
-// +--------+--------+--------+--------+--------+--------+--------+--------+
-// | base   |          padding                           |  code  |  len   |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 // | Ephemeral ID (opt)													   |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
@@ -42,90 +42,77 @@ var _ Request = (*EphemReq)(nil)
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 // | Info												                   |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
-// | max1 BW| max2 BW|...												   |
+// | DataLen         | FailHop|FailCode| MaxBw 1| MaxBW 2| ...			   |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 // | ...																   |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 // | padding															   |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 type EphemFailed struct {
-	*Base
-	// ReqID is the requested ephemeral reservation id set in setup requests.
-	ReqID sibra.ID
+	// ID is the requested ephemeral reservation id set in setup requests.
+	ID sibra.ID
 	// Info is the requested reservation info.
 	Info *sbresv.Info
 	// Offers contains the offered bandwidth classes.
 	Offers []sibra.BwCls
-	// FailCode indicates why the reservation failed.
-	FailCode FailCode
-	// LineLen contains the line length of the header. This is done to avoid
+	// DataLen contains the byte length. This is done to avoid
 	// resizing the packet. Thus, the response will keep the same size as the
 	// request.
-	LineLen uint8
+	DataLen uint16
+	// FailHop indicates the first hop that failed the request.
+	FailHop uint8
+	// FailCode indicates why the reservation failed.
+	FailCode FailCode
 }
 
-func EphemFailedFromRaw(raw common.RawBytes, numHops int) (*EphemFailed, error) {
-	b, err := BaseFromRaw(raw)
-	if err != nil {
-		return nil, err
-	}
-	return EphemFailedFromBase(b, raw, numHops)
-}
-
-func EphemFailedFromBase(b *Base, raw common.RawBytes, numHops int) (*EphemFailed, error) {
-	if b.Type != REphmSetup && b.Type != REphmRenewal {
-		return nil, common.NewBasicError("Invalid request type", nil, "type", b.Type)
-	}
-	if b.Accepted {
-		return nil, common.NewBasicError("Must be failed", nil)
-	}
-	min := offEphemId + common.LineLen
-	if b.Type == REphmSetup {
+func EphemFailedFromRaw(raw common.RawBytes, setup bool, numHops int) (*EphemFailed, error) {
+	min := offEphemFailedCode
+	off := 0
+	if setup {
 		min += sibra.EphemIDLen
+		off += sibra.EphemIDLen
 	}
 	if len(raw) < min {
-		return nil, common.NewBasicError("Invalid ephemeral reservation reply length", nil,
+		return nil, common.NewBasicError("Invalid ephemeral failed length", nil,
 			"min", min, "actual", len(raw))
 	}
-	if len(raw) != int(raw[offEphmLen])*common.LineLen {
-		return nil, common.NewBasicError("Invalid ephemeral reservation reply length", nil,
-			"expected", int(raw[offEphmLen])*common.LineLen, "actual", len(raw))
+	e := &EphemFailed{
+		DataLen:  common.Order.Uint16(raw[off+offEphemFailedDataLen : off+offEphemFailedDataLen+2]),
+		FailHop:  raw[off+offEphemFailedHop],
+		FailCode: FailCode(raw[off+offEphemFailedCode]),
+		Offers:   make([]sibra.BwCls, numHops),
 	}
-	var reqID sibra.ID
-	off, end := 0, offEphemId
-	if b.Type == REphmSetup {
-		off, end = end, end+sibra.EphemIDLen
-		reqID = sibra.ID(raw[off:end])
+	if len(raw) < int(e.DataLen) {
+		return nil, common.NewBasicError("Invalid ephemeral failed length", nil,
+			"expected", int(e.DataLen), "actual", len(raw))
+	}
+	off, end := 0, 0
+	if setup {
+		end = sibra.EphemIDLen
+		e.ID = sibra.ID(raw[off:end])
 	}
 	off, end = end, end+sbresv.InfoLen
-	rep := &EphemFailed{
-		Base:     b,
-		ReqID:    reqID,
-		Info:     sbresv.NewInfoFromRaw(raw[off:end]),
-		Offers:   make([]sibra.BwCls, numHops),
-		FailCode: FailCode(raw[offFailCode]),
-		LineLen:  raw[offEphmLen],
-	}
+	e.Info = sbresv.NewInfoFromRaw(raw[off:end])
+	off += offEphemFailedOffers
 	for i := 0; i < numHops; i++ {
-		rep.Offers[i] = sibra.BwCls(raw[end+i])
+		e.Offers[i] = sibra.BwCls(raw[off+i])
 	}
-	return rep, nil
-}
-
-func (r *EphemFailed) EphemID() sibra.ID {
-	return r.ReqID
+	return e, nil
 }
 
 func (r *EphemFailed) Steady() bool {
 	return false
 }
 
-func (r *EphemFailed) NumHops() int {
-	return len(r.Offers)
+func (r *EphemFailed) Len() int {
+	return r.ID.Len() + int(r.DataLen)
 }
 
-func (r *EphemFailed) Len() int {
-	return int(r.LineLen) * common.LineLen
+func (r *EphemFailed) Type() DataType {
+	if r.ID != nil {
+		return REphmSetup
+	}
+	return REphmRenewal
 }
 
 func (r *EphemFailed) Write(b common.RawBytes) error {
@@ -133,37 +120,39 @@ func (r *EphemFailed) Write(b common.RawBytes) error {
 		return common.NewBasicError("Buffer to short", nil, "method", "sbreq.EphemFailed.Write",
 			"min", r.Len(), "actual", len(b))
 	}
-	if err := r.Base.Write(b); err != nil {
-		return err
-	}
-	b[offFailCode] = uint8(r.FailCode)
-	b[offEphmLen] = r.LineLen
-	off, end := 0, offEphemId
-	if r.Type == REphmSetup {
+	off, end := 0, 0
+	if r.ID != nil {
 		off, end = end, end+sibra.EphemIDLen
-		r.ReqID.Write(b[off:end])
+		r.ID.Write(b[off:end])
 	}
-	off, end = end, end+r.Info.Len()
+	off, end = end, end+offEphemFailedDataLen
 	if err := r.Info.Write(b[off:end]); err != nil {
 		return err
 	}
+	common.Order.PutUint16(b[end:end+2], r.DataLen)
+	b[off+offEphemFailedCode] = uint8(r.FailCode)
+	b[off+offEphemFailedHop] = r.FailHop
+	off += offEphemFailedOffers
 	for i := 0; i < len(r.Offers); i++ {
-		b[end+i] = uint8(r.Offers[i])
+		b[off+i] = uint8(r.Offers[i])
 	}
 	return nil
 }
 
-func (r *EphemFailed) Reverse() (Request, error) {
-	if r.Response {
-		return nil, common.NewBasicError("Reversing not supported", nil,
-			"response", r.Response, "accepted", r.Accepted)
+func (r *EphemFailed) Reverse() (Data, error) {
+	c := &EphemFailed{
+		ID:       r.ID,
+		FailHop:  r.FailHop,
+		FailCode: r.FailCode,
+		DataLen:  r.DataLen,
+		Offers:   r.Offers,
+		Info:     r.Info,
 	}
-	r.Response = true
-	return r, nil
+	return c, nil
 }
 
 func (r *EphemFailed) String() string {
-	return fmt.Sprintf("Base: [%s] Code: %s Len: %d Info: [%s] Offers: [%s]",
-		r.Base, r.FailCode, r.LineLen, r.Info, r.Offers)
+	return fmt.Sprintf("Info: [%s] Len: %d Hop %d Code: %s Offers: [%s]",
+		r.Info, r.DataLen, r.FailHop, r.FailCode, r.Offers)
 
 }

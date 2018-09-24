@@ -23,104 +23,79 @@ import (
 )
 
 const (
-	offSteadyResvMin  = 6
-	offSteadyResvMax  = 7
-	offSteadyResvInfo = common.LineLen
+	offSteadyReqFail   = 0
+	offSteadyReqMin    = 1
+	offSteadyReqMax    = 2
+	offSteadyReqAcc    = 3
+	offSteadyReqSplit  = 4
+	offSteadyReqProps  = 5
+	offSteadyReqBaseID = 6
 )
 
-var _ Request = (*SteadyReq)(nil)
+var _ Data = (*SteadyReq)(nil)
 
 // SteadyReq is the SIBRA request for a steady reservations. It can
 // contain a reservation request, or the response for a failed request.
 //
 // 0B       1        2        3        4        5        6        7
 // +--------+--------+--------+--------+--------+--------+--------+--------+
-// | base   |          padding                           | min rBW| max rBW|
+// |FailHop | Min rBW| Max rBW| AccBW  | Split  |End Prop| Base ID         |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
-// | Info																   |
+// | ... (only for telescope request)									   |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
-// |all1 BW |min1 BW |max1 BW | lines1 | ...                               |
+// | Info 																   |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
-// |allN BW |minN BW |maxN BW | linesN |             padding               |
+// |All 1 BW|Max 1 BW|Lines 1 |All 2 BW|Max 2 BW|Lines 2 | ...             |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 type SteadyReq struct {
-	*Base
+	// BaseID is the base ID in a telescoping request.
+	BaseID sibra.ID
 	// Info is the reservation info field.
 	Info *sbresv.Info
 	// OfferFields are the SIBRA offer fields.
 	OfferFields []*Offer
-	// Lines is a list of line lengths for the SOFields.
-	Lines []byte
 	// MinBw is the minimum bandwidth class requested by the reservation initiator.
 	MinBw sibra.BwCls
 	// MaxBw is the maximum bandwidth class requested by the reservation initiator.
 	MaxBw sibra.BwCls
+	// AccBw is the minimum of the so far allocated bandwidth classes.
+	AccBw sibra.BwCls
+	// FailHop is the first hop that failed the request.
+	FailHop uint8
+	// Split is the bandwidth split class.
+	Split sibra.SplitCls
+	// EndProps are the reservation end properties.
+	EndProps sibra.EndProps
+	// DataType indicates whether this is for setup, telescope setup or renewal.
+	DataType DataType
 }
 
-func SteadyReqFromRaw(raw common.RawBytes, numHops int) (*SteadyReq, error) {
-	b, err := BaseFromRaw(raw)
-	if err != nil {
-		return nil, err
-	}
-	return SteadyReqFromBase(b, raw, numHops)
-}
-
-func SteadyReqFromBase(b *Base, raw common.RawBytes, numHops int) (*SteadyReq, error) {
-	if b.Type != RSteadySetup && b.Type != RSteadyRenewal {
-		return nil, common.NewBasicError("Invalid request type", nil, "type", b.Type)
-	}
-	if b.Response && b.Accepted {
-		return nil, common.NewBasicError("Response must not be accepted", nil)
-	}
-	if len(raw) < calcSteadyResvReqLen(numHops) {
+func SteadyReqFromRaw(raw common.RawBytes, t DataType, numHops int) (*SteadyReq, error) {
+	if len(raw) < calcSteadyResvReqLen(t, numHops) {
 		return nil, common.NewBasicError("Invalid steady reservation request length", nil,
-			"numHops", numHops, "min", calcSteadyResvReqLen(numHops), "actual", len(raw))
+			"numHops", numHops, "min", calcSteadyResvReqLen(t, numHops), "actual", len(raw))
 	}
-	off, end := offSteadyResvInfo, offSteadyResvInfo+sbresv.InfoLen
 	block := &SteadyReq{
-		Base:        b,
-		Info:        sbresv.NewInfoFromRaw(raw[off:end]),
-		MinBw:       sibra.BwCls(raw[offSteadyResvMin]),
-		MaxBw:       sibra.BwCls(raw[offSteadyResvMax]),
+		FailHop:     raw[offSteadyReqFail],
+		MinBw:       sibra.BwCls(raw[offSteadyReqMin]),
+		MaxBw:       sibra.BwCls(raw[offSteadyReqMax]),
+		AccBw:       sibra.BwCls(raw[offSteadyReqAcc]),
+		Split:       sibra.SplitCls(raw[offSteadyReqSplit]),
+		EndProps:    sibra.EndProps(raw[offSteadyReqProps]),
 		OfferFields: make([]*Offer, numHops),
-		Lines:       make([]byte, numHops),
 	}
+	off := offSteadyReqBaseID
+	if t == RSteadySetupTelescope {
+		block.BaseID = sibra.ID(raw[off : off+sibra.SteadyIDLen])
+		off = off + sibra.SteadyIDLen
+	}
+	block.Info = sbresv.NewInfoFromRaw(raw[off : off+sbresv.InfoLen])
+	off = off + sbresv.InfoLen
 	for i := 0; i < numHops; i++ {
-		off, end = end, end+offerFieldLen
-		block.OfferFields[i] = NewOfferFromRaw(raw[off:end])
-		block.Lines[i] = raw[end]
-		end += 1
+		block.OfferFields[i] = NewOfferFromRaw(raw[off:])
+		off += block.OfferFields[i].Len()
 	}
 	return block, nil
-}
-
-func NewSteadyReq(t RequestType, info *sbresv.Info,
-	min, max sibra.BwCls, numHops uint8) *SteadyReq {
-
-	base := &Base{
-		Type:     t,
-		Accepted: true,
-	}
-	// Create request block.
-	req := &SteadyReq{
-		Base:        base,
-		Info:        info,
-		MinBw:       min,
-		MaxBw:       max,
-		OfferFields: make([]*Offer, numHops),
-		Lines:       make([]byte, numHops),
-	}
-	// Initialize the offer fields.
-	for i := range req.OfferFields {
-		req.OfferFields[i] = &Offer{}
-	}
-	// Set allocated bandwidth in own offer field.
-	if req.Info.PathType.Reversed() {
-		req.OfferFields[len(req.OfferFields)-1].AllocBw = max
-	} else {
-		req.OfferFields[0].AllocBw = max
-	}
-	return req
 }
 
 func (r *SteadyReq) Steady() bool {
@@ -132,13 +107,19 @@ func (r *SteadyReq) NumHops() int {
 }
 
 func (r *SteadyReq) Len() int {
-	return calcSteadyResvReqLen(r.NumHops())
+	return calcSteadyResvReqLen(r.DataType, r.NumHops())
 }
 
-func calcSteadyResvReqLen(numHops int) int {
-	l := offSteadyResvInfo + sbresv.InfoLen + numHops*(offerFieldLen+1)
-	padding := (common.LineLen - l%common.LineLen) % common.LineLen
-	return l + padding
+func (r *SteadyReq) Type() DataType {
+	return r.DataType
+}
+
+func calcSteadyResvReqLen(t DataType, numHops int) int {
+	min := offSteadyReqBaseID + sbresv.InfoLen + numHops*(offerFieldLen)
+	if t == RSteadySetupTelescope {
+		return min + sibra.SteadyIDLen
+	}
+	return min
 }
 
 func (r *SteadyReq) Write(b common.RawBytes) error {
@@ -146,41 +127,50 @@ func (r *SteadyReq) Write(b common.RawBytes) error {
 		return common.NewBasicError("Buffer to short", nil, "method", "SIBRASteadyResvReq.Write",
 			"min", r.Len(), "actual", len(b))
 	}
-	if err := r.Base.Write(b); err != nil {
-		return err
+	b[offSteadyReqFail] = byte(r.FailHop)
+	b[offSteadyReqMin] = byte(r.MinBw)
+	b[offSteadyReqMax] = byte(r.MaxBw)
+	b[offSteadyReqAcc] = byte(r.AccBw)
+	b[offSteadyReqSplit] = byte(r.Split)
+	b[offSteadyReqProps] = byte(r.EndProps)
+
+	off, end := offSteadyReqBaseID, offSteadyReqBaseID
+	if r.DataType == RSteadySetupTelescope {
+		end += sibra.SteadyIDLen
+		r.BaseID.Write(b[off:end])
 	}
-	b[offSteadyResvMin] = byte(r.MinBw)
-	b[offSteadyResvMax] = byte(r.MaxBw)
-	off, end := offSteadyResvInfo, offSteadyResvInfo+sbresv.InfoLen
+	off, end = end, end+sbresv.InfoLen
 	if err := r.Info.Write(b[off:end]); err != nil {
 		return err
 	}
-	for i, op := range r.OfferFields {
+	for _, op := range r.OfferFields {
 		off, end = end, end+op.Len()
 		if err := op.Write(b[off:end]); err != nil {
 			return err
 		}
-		b[end] = r.Lines[i]
-		end += 1
 	}
 	return nil
 }
 
-func (r *SteadyReq) Reverse() (Request, error) {
-	if r.Response {
-		return nil, common.NewBasicError("Reversing not supported", nil,
-			"response", r.Response, "accepted", r.Accepted)
+func (r *SteadyReq) Reverse() (Data, error) {
+	c := &SteadyReq{
+		BaseID:      r.BaseID,
+		DataType:    r.DataType,
+		EndProps:    r.EndProps,
+		Split:       r.Split,
+		AccBw:       r.AccBw,
+		FailHop:     r.FailHop,
+		Info:        r.Info,
+		OfferFields: r.OfferFields,
+		MaxBw:       r.MaxBw,
+		MinBw:       r.MinBw,
 	}
-	if r.Accepted {
-		rep, err := NewSteadySuccFromReq(r)
-		return rep, err
-	}
-	r.Response = true
-	return r, nil
+	return c, nil
 }
 
 func (r *SteadyReq) String() string {
-	return fmt.Sprintf("Base: [%s] Info: [%s] Max: %d Min: %d OfferFields: %s Lines: %s",
-		r.Base, r.Info, r.MaxBw, r.MinBw, r.OfferFields, r.Lines)
+	return fmt.Sprintf("Info: [%s] Max: %v Min: %v AccBw: %v FailHop: %d Split: %v "+
+		"EndProps: %v OfferFields: %s", r.Info, r.MaxBw, r.MinBw, r.AccBw, r.FailHop, r.Split,
+		r.EndProps, r.OfferFields)
 
 }

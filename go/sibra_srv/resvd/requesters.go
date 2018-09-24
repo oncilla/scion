@@ -21,7 +21,6 @@ import (
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/hpkt"
 	"github.com/scionproto/scion/go/lib/l4"
 	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/sibra"
@@ -34,6 +33,7 @@ import (
 	"github.com/scionproto/scion/go/lib/spkt"
 	"github.com/scionproto/scion/go/sibra_srv/adm"
 	"github.com/scionproto/scion/go/sibra_srv/conf"
+	"github.com/scionproto/scion/go/sibra_srv/util"
 )
 
 const (
@@ -71,6 +71,8 @@ type Reqstr struct {
 	block   *sbresv.Block
 	timeout time.Duration
 	idx     sibra.Index
+	props   sibra.EndProps
+	split   sibra.SplitCls
 }
 
 func (r *Reqstr) Run(i ReqstrI) {
@@ -132,20 +134,19 @@ func (r *Reqstr) reversePkt(pkt *conf.ExtPkt) error {
 }
 
 func (r *Reqstr) sendPkt(pkt *conf.ExtPkt) error {
-	buf := make(common.RawBytes, pkt.Spkt.TotalLen())
-	pktLen, err := hpkt.WriteScnPkt(pkt.Spkt, buf)
+	buf, err := util.PackWithPld(pkt.Spkt, pkt.Pld)
 	if err != nil {
 		return err
 	}
 	nextHopHost := r.path.Entry.HostInfo.Host()
 	nextHopPort := r.path.Entry.HostInfo.Port
 	appAddr := reliable.AppAddr{Addr: nextHopHost, Port: nextHopPort}
-	written, err := pkt.Conf.Conn.WriteTo(buf[:pktLen], &appAddr)
+	written, err := pkt.Conf.Conn.WriteTo(buf, &appAddr)
 	if err != nil {
 		return err
-	} else if written != pktLen {
+	} else if written != len(buf) {
 		return common.NewBasicError("Wrote incomplete message", nil,
-			"expected", pktLen, "actual", written)
+			"expected", len(buf), "actual", written)
 	}
 	// TODO(roods): remove
 	r.Debug("Sent packet", "nextHopHost", nextHopHost, "port", nextHopPort)
@@ -168,7 +169,6 @@ func (r *Reqstr) CreateExtPkt() (*conf.ExtPkt, error) {
 		SrcHost: r.srcHost,
 		HBHExt:  []common.Extension{pkt.Steady},
 		L4:      l4.L4Header(&l4.UDP{Checksum: make(common.RawBytes, 2)}),
-		Pld:     make(common.RawBytes, 0),
 	}
 	return pkt, nil
 }
@@ -191,13 +191,13 @@ func (r *ResvReqstr) handleRep(pkt *conf.ExtPkt) error {
 	if err := r.validate(pkt); err != nil {
 		return common.NewBasicError("Invalid reply", err)
 	}
-	if !pkt.Steady.Request.GetBase().Accepted {
-		return common.NewBasicError("Reservation not accepted", nil, "req", pkt.Steady.Request)
+	if !pkt.Pld.Accepted {
+		return common.NewBasicError("Reservation not accepted", nil, "req", pkt.Pld.Data)
 	}
 	if err := adm.PromoteToSOFCreated(pkt); err != nil {
 		return common.NewBasicError("Failed to promote", err)
 	}
-	block := pkt.Steady.Request.(*sbreq.SteadySucc).Block
+	block := pkt.Pld.Data.(*sbreq.SteadySucc).Block
 	r.Debug("Reservation has been accepted", "info", block.Info)
 	e := &conf.LocalResvEntry{
 		Id:       r.id.Copy(),
@@ -210,21 +210,21 @@ func (r *ResvReqstr) handleRep(pkt *conf.ExtPkt) error {
 }
 
 func (r *ResvReqstr) validate(pkt *conf.ExtPkt) error {
-	if pkt.Steady.Request == nil {
+	if pkt.Pld.Data == nil {
 		return common.NewBasicError("No request present", nil)
 	}
-	if !pkt.Steady.ReqID.Eq(r.id) {
+	if !pkt.Steady.GetCurrID().Eq(r.id) {
 		return common.NewBasicError("Invalid reservation id", nil,
-			"expected", r.id, "actual", pkt.Steady.ReqID)
+			"expected", r.id, "actual", pkt.Steady.GetCurrID())
 	}
 	var info *sbresv.Info
-	switch r := pkt.Steady.Request.(type) {
+	switch r := pkt.Pld.Data.(type) {
 	case *sbreq.SteadyReq:
 		info = r.Info
 	case *sbreq.SteadySucc:
 		info = r.Block.Info
 	default:
-		return common.NewBasicError("Invalid request type", nil, "type", r.GetBase().Type)
+		return common.NewBasicError("Invalid request type", nil, "type", pkt.Pld.Type)
 	}
 	if info.Index != r.idx {
 		return common.NewBasicError("Invalid index", nil, "expected", r.idx, "actual", info.Index)
@@ -261,8 +261,8 @@ func (s *SteadySetup) CreateExtPkt() (*conf.ExtPkt, error) {
 		PathType: s.pt,
 		Index:    s.idx,
 	}
-	pkt.Steady, err = sbcreate.NewSteadySetup(sbreq.NewSteadyReq(
-		sbreq.RSteadySetup, info, s.min, s.max, pLen), s.id)
+	pkt.Pld = steadyReq(sbreq.RSteadySetup, info, s.min, s.max, s.props, s.split, int(pLen))
+	pkt.Steady, err = sbcreate.NewSteadySetup(pkt.Pld.Data.(*sbreq.SteadyReq), s.id)
 	if err != nil {
 		return nil, err
 	}
@@ -278,17 +278,16 @@ func (s *SteadySetup) CreateExtPkt() (*conf.ExtPkt, error) {
 		Path:    sPath,
 		HBHExt:  []common.Extension{pkt.Steady},
 		L4:      l4.L4Header(&l4.UDP{Checksum: make(common.RawBytes, 2)}),
-		Pld:     make(common.RawBytes, 0),
 	}
 	return pkt, nil
 }
 
 func (s *SteadySetup) PrepareReq(pkt *conf.ExtPkt) error {
-	resvReq := pkt.Steady.Request.(*sbreq.SteadyReq)
+	resvReq := pkt.Pld.Data.(*sbreq.SteadyReq)
 	if err := adm.AdmitSteadyResv(pkt, resvReq); err != nil {
 		return common.NewBasicError("Unable to admit reservation", err)
 	}
-	if !resvReq.Accepted {
+	if !pkt.Pld.Accepted {
 		return common.NewBasicError("Not enough bandwidth", nil)
 	}
 	if err := pkt.Steady.NextSOFIndex(); err != nil {
@@ -305,7 +304,7 @@ func (s *SteadySetup) HandleRep(pkt *conf.ExtPkt) error {
 	if err := s.handleRep(pkt); err != nil {
 		return err
 	}
-	block := pkt.Steady.Request.(*sbreq.SteadySucc).Block
+	block := pkt.Pld.Data.(*sbreq.SteadySucc).Block
 	c := &ConfirmIndex{
 		Reqstr: &Reqstr{
 			Logger:  s.Logger.New("sub", "ConfirmIndex", "state", sibra.StatePending),
@@ -337,16 +336,16 @@ func (s *SteadyRenew) PrepareReq(pkt *conf.ExtPkt) error {
 		PathType: s.block.Info.PathType,
 		Index:    s.idx,
 	}
-	resvReq := sbreq.NewSteadyReq(sbreq.RSteadyRenewal, info, s.min, s.max,
-		uint8(s.block.NumHops()))
-	err := pkt.Steady.ToRequest(resvReq)
+	pkt.Pld = steadyReq(sbreq.RSteadyRenewal, info, s.min, s.max,
+		s.props, s.split, s.block.NumHops())
+	err := pkt.Steady.ToRequest(pkt.Pld)
 	if err != nil {
 		return err
 	}
-	if err := adm.AdmitSteadyResv(pkt, resvReq); err != nil {
+	if err := adm.AdmitSteadyResv(pkt, pkt.Pld.Data.(*sbreq.SteadyReq)); err != nil {
 		return common.NewBasicError("Unable to admit reservation", err)
 	}
-	if !resvReq.Accepted {
+	if !pkt.Pld.Accepted {
 		return common.NewBasicError("Not enough bandwidth", nil)
 	}
 	return nil
@@ -385,14 +384,22 @@ type ConfirmIndex struct {
 }
 
 func (c *ConfirmIndex) PrepareReq(pkt *conf.ExtPkt) error {
-	r, err := sbreq.NewConfirmIndex(c.block.NumHops(), c.idx, c.state)
-	if err != nil {
+	pkt.Pld = &sbreq.Pld{
+		NumHops:   uint8(c.block.NumHops()),
+		TimeStamp: uint32(time.Now().Unix()),
+		Accepted:  true,
+		Type:      sbreq.RSteadyConfIndex,
+		Auths:     make([]common.RawBytes, c.block.NumHops()),
+		Data: &sbreq.ConfirmIndex{
+			State: c.state,
+			Idx:   c.idx,
+		},
+	}
+	pkt.Pld.TotalLen = uint16(pkt.Pld.Len())
+	if err := pkt.Steady.ToRequest(pkt.Pld); err != nil {
 		return err
 	}
-	if err := pkt.Steady.ToRequest(r); err != nil {
-		return err
-	}
-	return adm.Promote(pkt, r)
+	return adm.Promote(pkt, pkt.Pld.Data.(*sbreq.ConfirmIndex))
 }
 
 func (c *ConfirmIndex) NotifyKey() []*conf.NotifyKey {
@@ -404,7 +411,7 @@ func (c *ConfirmIndex) HandleRep(pkt *conf.ExtPkt) error {
 		return err
 	}
 	// correct response
-	if !pkt.Steady.Request.GetBase().Accepted {
+	if !pkt.Pld.Accepted {
 		c.Info("Index not accepted")
 		// FIXME(roosd): Start clean up requester
 	} else {
@@ -415,16 +422,16 @@ func (c *ConfirmIndex) HandleRep(pkt *conf.ExtPkt) error {
 }
 
 func (c *ConfirmIndex) validate(pkt *conf.ExtPkt) error {
-	if pkt.Steady.Request == nil {
+	if pkt.Pld.Data == nil {
 		return common.NewBasicError("No request present", nil)
 	}
-	if !pkt.Steady.ReqID.Eq(c.id) {
+	if !pkt.Steady.GetCurrID().Eq(c.id) {
 		return common.NewBasicError("Invalid reservation id", nil,
-			"expected", c.id, "actual", pkt.Steady.ReqID)
+			"expected", c.id, "actual", pkt.Steady.GetCurrID())
 	}
-	r, ok := pkt.Steady.Request.(*sbreq.ConfirmIndex)
+	r, ok := pkt.Pld.Data.(*sbreq.ConfirmIndex)
 	if !ok {
-		return common.NewBasicError("Invalid request type", nil, "type", r.GetBase().Type)
+		return common.NewBasicError("Invalid request type", nil, "type", pkt.Pld.Type)
 	}
 	if r.Idx != c.idx {
 		return common.NewBasicError("Invalid index", nil, "expected", c.idx, "actual", r.Idx)
@@ -433,4 +440,40 @@ func (c *ConfirmIndex) validate(pkt *conf.ExtPkt) error {
 		return common.NewBasicError("Invalid state", nil, "expected", c.state, "actual", r.State)
 	}
 	return nil
+}
+
+func steadyReq(t sbreq.DataType, info *sbresv.Info, min, max sibra.BwCls, props sibra.EndProps,
+	split sibra.SplitCls, numHops int) *sbreq.Pld {
+
+	// Create request block.
+	req := &sbreq.SteadyReq{
+		DataType:    t,
+		AccBw:       max,
+		EndProps:    props,
+		Split:       split,
+		Info:        info,
+		MinBw:       min,
+		MaxBw:       max,
+		OfferFields: make([]*sbreq.Offer, numHops),
+	}
+	// Initialize the offer fields.
+	for i := range req.OfferFields {
+		req.OfferFields[i] = &sbreq.Offer{}
+	}
+	// Set allocated bandwidth in own offer field.
+	if req.Info.PathType.Reversed() {
+		req.OfferFields[len(req.OfferFields)-1].AllocBw = max
+	} else {
+		req.OfferFields[0].AllocBw = max
+	}
+	pld := &sbreq.Pld{
+		NumHops:   uint8(numHops),
+		Type:      t,
+		Data:      req,
+		Accepted:  true,
+		Auths:     make([]common.RawBytes, numHops),
+		TimeStamp: uint32(time.Now().Unix()),
+	}
+	pld.TotalLen = uint16(pld.Len())
+	return pld
 }

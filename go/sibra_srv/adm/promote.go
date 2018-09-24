@@ -19,36 +19,29 @@ import (
 
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/sibra"
-	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/sibra_srv/conf"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 	"github.com/scionproto/scion/go/sibra_srv/util"
 )
 
 func PromoteToSOFCreated(pkt *conf.ExtPkt) error {
-	switch r := pkt.Steady.Request.(type) {
-	case *sbreq.SteadySucc:
-		ifids, err := util.GetResvIfids(pkt.Steady.Base, pkt.Spkt)
-		if err != nil {
-			return err
-		}
-		err = pkt.Conf.SibraAlgo.PromoteToSOFCreated(ifids, pkt.Steady.ReqID, r.Block.Info)
-		if err != nil {
-			return common.NewBasicError("Unable to promote to SOF created", err)
-		}
-		return issueSOF(pkt.Steady.Base, ifids, pkt.Conf)
-	default:
+	r, ok := pkt.Pld.Data.(*sbreq.SteadySucc)
+	if !ok {
 		return common.NewBasicError("No steady reservation response block present", nil, "req", r)
 	}
+	ifids, err := util.GetResvIfids(pkt.Steady.Base, pkt.Spkt)
+	if err != nil {
+		return err
+	}
+	err = pkt.Conf.SibraAlgo.PromoteToSOFCreated(ifids, pkt.Steady.GetCurrID(), r.Block.Info)
+	if err != nil {
+		return common.NewBasicError("Unable to promote to SOF created", err)
+	}
+	mac := pkt.Conf.SOFMacPool.Get().(hash.Hash)
+	defer pkt.Conf.SOFMacPool.Put(mac)
+	return r.SetSOF(mac, pkt.Steady.IDs, pkt.Steady.PathLens, ifids.InIfid,
+		ifids.EgIfid, int(pkt.Steady.SOFIndex))
 
-}
-
-func issueSOF(base *sbextn.Base, ifids sbalgo.IFTuple, conf *conf.Conf) error {
-	mac := conf.SOFMacPool.Get().(hash.Hash)
-	err := base.SetSOF(mac, ifids.InIfid, ifids.EgIfid)
-	conf.SOFMacPool.Put(mac)
-	return err
 }
 
 func Promote(pkt *conf.ExtPkt, r *sbreq.ConfirmIndex) error {
@@ -68,7 +61,7 @@ func PromoteToPending(pkt *conf.ExtPkt, c *sbreq.ConfirmIndex) error {
 	if err != nil {
 		return err
 	}
-	return pkt.Conf.SibraAlgo.PromoteToPending(ifids, pkt.Steady.ReqID, c)
+	return pkt.Conf.SibraAlgo.PromoteToPending(ifids, pkt.Steady.GetCurrID(), c)
 }
 
 func PromoteToActive(pkt *conf.ExtPkt, c *sbreq.ConfirmIndex) error {
@@ -84,5 +77,5 @@ func PromoteToActive(pkt *conf.ExtPkt, c *sbreq.ConfirmIndex) error {
 	if err != nil {
 		return err
 	}
-	return pkt.Conf.SibraAlgo.PromoteToActive(ifids, pkt.Steady.ReqID, info, c)
+	return pkt.Conf.SibraAlgo.PromoteToActive(ifids, pkt.Steady.GetCurrID(), info, c)
 }

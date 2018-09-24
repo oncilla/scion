@@ -23,7 +23,6 @@ import (
 
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/sibra"
-	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
@@ -72,8 +71,6 @@ const (
 // - (reserved)
 // - version (2 LSB)
 type Base struct {
-	// ReqID is set to the reservation id associated with the request, if any.
-	ReqID sibra.ID
 	// CurrHop is the current hop on the path. Transfer ASes count as one hop.
 	CurrHop int
 	// TotalHops is the number of traversed ASes. Transfer ASes count as one hop.
@@ -101,8 +98,6 @@ type Base struct {
 	// ActiveBlocks holds up to 3 active reservations blocks.
 	// In case of an ephemeral extension, exactly one active block must be present.
 	ActiveBlocks []*sbresv.Block
-	// Request contains a request if the IsRequest flag is set.
-	Request sbreq.Request
 
 	// Version is the SIBRA version.
 	Version uint8
@@ -217,25 +212,6 @@ func (e *Base) parseActiveBlock(raw common.RawBytes, numHops int) error {
 	return nil
 }
 
-// parseRequest parses the request and sets ReqID. Requests are at the end,
-// thus raw must be completely parsed, otherwise an error is thrown.
-func (e *Base) parseRequest(raw common.RawBytes) error {
-	r, err := sbreq.Parse(raw, e.TotalHops)
-	if err != nil {
-		return err
-	}
-	if r.Len() != len(raw) {
-		return common.NewBasicError(InvalidExtnLength, nil,
-			"len", len(raw), "unparsed", len(raw)-e.Request.Len())
-	}
-	e.Request = r
-	e.ReqID = r.EphemID()
-	if e.ReqID == nil {
-		e.ReqID = e.IDs[0]
-	}
-	return nil
-}
-
 // FirstHop indicates if this is the first hop.
 func (e *Base) FirstHop() bool {
 	return (!e.Forward && e.CurrHop == e.TotalHops-1) || (e.Forward && e.CurrHop == 0)
@@ -274,6 +250,10 @@ func (e *Base) Expiry() time.Time {
 	return exp
 }
 
+func (e *Base) GetCurrID() sibra.ID {
+	return e.IDs[e.CurrBlock]
+}
+
 func (e *Base) GetCurrBlock() *sbresv.Block {
 	if len(e.ActiveBlocks) == 0 {
 		return nil
@@ -289,29 +269,6 @@ func (e *Base) VerifySOF(mac hash.Hash, now time.Time) error {
 		ids = e.IDs
 	}
 	return e.GetCurrBlock().Verify(mac, e.RelSOFIdx, ids, pLens, now)
-}
-
-func (e *Base) SetSOF(mac hash.Hash, inIFID, egIFID common.IFIDType) error {
-	switch r := e.Request.(type) {
-	case *sbreq.SteadySucc:
-		sof := r.Block.SOFields[e.SOFIndex]
-		sof.Ingress = inIFID
-		sof.Egress = egIFID
-		return r.Block.SetMac(mac, int(e.SOFIndex), e.IDs, e.PathLens)
-	case *sbreq.EphemReq:
-		sof := r.Block.SOFields[e.CurrHop]
-		sof.Ingress = inIFID
-		sof.Egress = egIFID
-		ids := e.IDs
-		if r.ReqID != nil {
-			ids = append([]sibra.ID(nil), r.ReqID)
-			ids = append(ids, e.IDs...)
-		}
-		return r.Block.SetMac(mac, int(e.CurrHop), ids, e.PathLens)
-	default:
-		return common.NewBasicError(UnableSetMac, nil,
-			"err", "packet does not contain reservation response", "request", r)
-	}
 }
 
 // NextSOFIndex updates the SOFIndex based on the direction implied by Forward.
@@ -402,9 +359,6 @@ func (e *Base) Len() int {
 	for _, resvBlock := range e.ActiveBlocks {
 		l += resvBlock.Len()
 	}
-	if e.Request != nil {
-		l += e.Request.Len()
-	}
 	return l
 }
 
@@ -444,9 +398,6 @@ func (e *Base) Write(b common.RawBytes) error {
 			return err
 		}
 	}
-	if e.Request != nil {
-		return e.Request.Write(b[end:])
-	}
 	return nil
 }
 
@@ -481,8 +432,8 @@ func (e *Base) Reverse() (bool, error) {
 func (e *Base) String() string {
 	return fmt.Sprintf("IDs %s Steady %t Setup %t Forward %t BestEffort %t "+
 		"IsRequest %t Version %d SOFIdx %d PLens %s CurrHop %d TotalHop %d "+
-		"CurrSteady %d RelSOFIdx %d TotalSteady %d Blocks %s Request %s",
+		"CurrSteady %d RelSOFIdx %d TotalSteady %d Blocks %s",
 		e.IDs, e.Steady, e.Setup, e.Forward, e.BestEffort, e.IsRequest, e.Version,
 		e.SOFIndex, e.PathLens, e.CurrHop, e.TotalHops, e.CurrSteady, e.RelSteadyHop,
-		e.TotalSteady, e.ActiveBlocks, e.Request)
+		e.TotalSteady, e.ActiveBlocks)
 }

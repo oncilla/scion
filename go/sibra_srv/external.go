@@ -87,7 +87,11 @@ func (h *ExternalHandler) handle(r *infra.Request) error {
 		return common.NewBasicError("Unable to validate", err)
 	}
 	if base.IsRequest {
-		return h.handleRequest(pkt, base.Request)
+		pkt.Pld, err = sbreq.PldFromRaw(pkt.Spkt.Pld.(common.RawBytes))
+		if err != nil {
+			return common.NewBasicError("Unable to parse request payload", err)
+		}
+		return h.handleRequest(pkt)
 	}
 	return common.NewBasicError("Dropping non-request packet", nil)
 
@@ -120,10 +124,10 @@ func (h *ExternalHandler) validateSOF(base *sbextn.Base, pkt *conf.ExtPkt) error
 	return err
 }
 
-func (h *ExternalHandler) handleRequest(pkt *conf.ExtPkt, request sbreq.Request) error {
-	switch r := request.(type) {
+func (h *ExternalHandler) handleRequest(pkt *conf.ExtPkt) error {
+	switch r := pkt.Pld.Data.(type) {
 	case *sbreq.SteadyReq:
-		if r.Response {
+		if pkt.Pld.Response {
 			return h.handleSteadyRep(pkt)
 		}
 		return h.handleSteadyReq(pkt, r)
@@ -132,20 +136,20 @@ func (h *ExternalHandler) handleRequest(pkt *conf.ExtPkt, request sbreq.Request)
 	case *sbreq.ConfirmIndex:
 		return h.handleIdxConf(pkt, r)
 	case *sbreq.EphemReq:
-		if r.Response {
-			return h.handleEphemResvRep(pkt, r.Type)
+		if pkt.Pld.Response {
+			return h.handleEphemResvRep(pkt)
 		}
-		return h.handleEphemResvReq(pkt, r.Type)
+		return h.handleEphemResvReq(pkt)
 	case *sbreq.EphemFailed:
-		if r.Response {
-			return h.handleEphemResvRep(pkt, r.Type)
+		if pkt.Pld.Response {
+			return h.handleEphemResvRep(pkt)
 		}
-		return h.handleEphemResvReq(pkt, r.Type)
+		return h.handleEphemResvReq(pkt)
 	case *sbreq.EphemClean:
-		if r.Response {
-			return h.handleEphemCleanUpRep(pkt, r.Type)
+		if pkt.Pld.Response {
+			return h.handleEphemCleanUpRep(pkt)
 		}
-		return h.handleEphemCleanUpReq(pkt, r.Type)
+		return h.handleEphemCleanUpReq(pkt)
 	default:
 		return common.NewBasicError("Unsupported request type", nil, "req", r)
 	}
@@ -153,7 +157,7 @@ func (h *ExternalHandler) handleRequest(pkt *conf.ExtPkt, request sbreq.Request)
 
 func (h *ExternalHandler) handleSteadyReq(pkt *conf.ExtPkt, r *sbreq.SteadyReq) error {
 	switch {
-	case pkt.Steady.LastHop() && !r.Response:
+	case pkt.Steady.LastHop() && !pkt.Pld.Response:
 		return h.steadyHandler.HandleResvReqEndAS(pkt, r)
 	default:
 		return h.steadyHandler.HandleResvReqHopAS(pkt, r)
@@ -171,21 +175,22 @@ func (h *ExternalHandler) handleSteadyRep(pkt *conf.ExtPkt) error {
 
 func (h *ExternalHandler) handleIdxConf(pkt *conf.ExtPkt, r *sbreq.ConfirmIndex) error {
 	switch {
-	case !r.Response && pkt.Steady.LastHop():
+	case !pkt.Pld.Response && pkt.Steady.LastHop():
 		return h.steadyHandler.HandleIdxConfEndAS(pkt, r)
-	case !r.Response:
+	case !pkt.Pld.Response:
 		return h.steadyHandler.HandleIdxConfHopAS(pkt, r)
-	case r.Response && pkt.Steady.LastHop():
+	case pkt.Pld.Response && pkt.Steady.LastHop():
 		return pkt.Conf.RepMaster.Handle(pkt)
 	default:
 		return util.Forward(pkt)
 	}
 }
 
-func (h *ExternalHandler) handleEphemResvReq(pkt *conf.ExtPkt, t sbreq.RequestType) error {
+func (h *ExternalHandler) handleEphemResvReq(pkt *conf.ExtPkt) error {
 	if pkt.Steady != nil {
-		if t != sbreq.REphmSetup {
-			return common.NewBasicError("Invalid request type", nil, "steady", true, "rt", t)
+		if pkt.Pld.Type != sbreq.REphmSetup {
+			return common.NewBasicError("Invalid request type", nil, "steady", true,
+				"rt", pkt.Pld.Type)
 		}
 		switch {
 		case pkt.Steady.FirstHop():
@@ -198,8 +203,9 @@ func (h *ExternalHandler) handleEphemResvReq(pkt *conf.ExtPkt, t sbreq.RequestTy
 			return h.ephemHandler.HandleSetupResvReqHopAS(pkt)
 		}
 	}
-	if t != sbreq.REphmRenewal {
-		return common.NewBasicError("Invalid request type", nil, "steady", false, "rt", t)
+	if pkt.Pld.Type != sbreq.REphmRenewal {
+		return common.NewBasicError("Invalid request type", nil, "steady", false,
+			"rt", pkt.Pld.Type)
 	}
 	switch {
 	case pkt.Ephem.FirstHop():
@@ -213,10 +219,11 @@ func (h *ExternalHandler) handleEphemResvReq(pkt *conf.ExtPkt, t sbreq.RequestTy
 	}
 }
 
-func (h *ExternalHandler) handleEphemResvRep(pkt *conf.ExtPkt, t sbreq.RequestType) error {
+func (h *ExternalHandler) handleEphemResvRep(pkt *conf.ExtPkt) error {
 	if pkt.Steady != nil {
-		if t != sbreq.REphmSetup {
-			return common.NewBasicError("Invalid request type", nil, "steady", true, "rt", t)
+		if pkt.Pld.Type != sbreq.REphmSetup {
+			return common.NewBasicError("Invalid request type", nil, "steady", true,
+				"rt", pkt.Pld.Type)
 		}
 		switch {
 		case pkt.Steady.FirstHop():
@@ -229,8 +236,9 @@ func (h *ExternalHandler) handleEphemResvRep(pkt *conf.ExtPkt, t sbreq.RequestTy
 			return h.ephemHandler.HandleSetupResvRepHopAS(pkt)
 		}
 	}
-	if t != sbreq.REphmRenewal {
-		return common.NewBasicError("Invalid request type", nil, "steady", false, "rt", t)
+	if pkt.Pld.Type != sbreq.REphmRenewal {
+		return common.NewBasicError("Invalid request type", nil, "steady", false,
+			"rt", pkt.Pld.Type)
 	}
 	switch {
 	case pkt.Ephem.FirstHop():
@@ -244,10 +252,11 @@ func (h *ExternalHandler) handleEphemResvRep(pkt *conf.ExtPkt, t sbreq.RequestTy
 	}
 }
 
-func (h *ExternalHandler) handleEphemCleanUpReq(pkt *conf.ExtPkt, t sbreq.RequestType) error {
+func (h *ExternalHandler) handleEphemCleanUpReq(pkt *conf.ExtPkt) error {
 	if pkt.Steady != nil {
-		if t != sbreq.REphmCleanUp {
-			return common.NewBasicError("Invalid request type", nil, "steady", true, "rt", t)
+		if pkt.Pld.Type != sbreq.REphmCleanUp {
+			return common.NewBasicError("Invalid request type", nil, "steady", true,
+				"rt", pkt.Pld.Type)
 		}
 		if pkt.Steady.LastHop() {
 			return h.ephemHandler.HandleCleanSetupEndAS(pkt)
@@ -255,8 +264,9 @@ func (h *ExternalHandler) handleEphemCleanUpReq(pkt *conf.ExtPkt, t sbreq.Reques
 			return h.ephemHandler.HandleCleanSetup(pkt)
 		}
 	}
-	if t != sbreq.REphmCleanUp {
-		return common.NewBasicError("Invalid request type", nil, "steady", false, "rt", t)
+	if pkt.Pld.Type != sbreq.REphmCleanUp {
+		return common.NewBasicError("Invalid request type", nil, "steady", false,
+			"rt", pkt.Pld.Type)
 	}
 	if pkt.Ephem.LastHop() {
 		return h.ephemHandler.HandleCleanRenewEndAS(pkt)
@@ -265,10 +275,11 @@ func (h *ExternalHandler) handleEphemCleanUpReq(pkt *conf.ExtPkt, t sbreq.Reques
 	}
 }
 
-func (h *ExternalHandler) handleEphemCleanUpRep(pkt *conf.ExtPkt, t sbreq.RequestType) error {
+func (h *ExternalHandler) handleEphemCleanUpRep(pkt *conf.ExtPkt) error {
 	if pkt.Steady != nil {
-		if t != sbreq.REphmCleanUp {
-			return common.NewBasicError("Invalid request type", nil, "steady", true, "rt", t)
+		if pkt.Pld.Type != sbreq.REphmCleanUp {
+			return common.NewBasicError("Invalid request type", nil, "steady", true,
+				"rt", pkt.Pld.Type)
 		}
 		if pkt.Steady.LastHop() {
 			return h.ephemHandler.HandleCleanStartAS(pkt)
@@ -276,8 +287,9 @@ func (h *ExternalHandler) handleEphemCleanUpRep(pkt *conf.ExtPkt, t sbreq.Reques
 			return util.Forward(pkt)
 		}
 	}
-	if t != sbreq.REphmCleanUp {
-		return common.NewBasicError("Invalid request type", nil, "steady", false, "rt", t)
+	if pkt.Pld.Type != sbreq.REphmCleanUp {
+		return common.NewBasicError("Invalid request type", nil, "steady", false,
+			"rt", pkt.Pld.Type)
 	}
 	if pkt.Ephem.LastHop() {
 		return h.ephemHandler.HandleCleanStartAS(pkt)

@@ -163,7 +163,7 @@ func (s *AlgoFast) setCalcState(c *calcState) {
 		currSrcDem = entry.SrcDemand[c.Ifids]
 		c.tempSrcDem += currSrcDem
 		// Avoid double counting the reservation's demand
-		if steady, ok := s.SteadyMap.Get(c.Extn.ReqID); ok && steady.Ifids == c.Ifids {
+		if steady, ok := s.SteadyMap.Get(c.Extn.GetCurrID()); ok && steady.Ifids == c.Ifids {
 			c.tempSrcDem -= minBps(steady.LastMax, minBps(inCap, egCap))
 		}
 	}
@@ -288,7 +288,7 @@ func (s *AlgoFast) linkRatio(c *calcState) float64 {
 
 func (s *AlgoFast) tempSrcAlloc(prevBw, srcAlloc sibra.Bps, c *calcState) sibra.Bps {
 	var alloc sibra.Bps
-	if steady, ok := s.SteadyMap.Get(c.Extn.ReqID); ok && steady.Ifids == c.Ifids {
+	if steady, ok := s.SteadyMap.Get(c.Extn.GetCurrID()); ok && steady.Ifids == c.Ifids {
 		alloc = steady.Allocated
 	}
 	return srcAlloc + prevBw - alloc
@@ -306,7 +306,7 @@ func (s *AlgoFast) AddSteadyResv(p sbalgo.AdmParams, alloc sibra.BwCls) error {
 		MaxBW: p.Req.MaxBw,
 	}
 
-	stEntry, ok := s.SteadyMap.Get(p.Extn.ReqID)
+	stEntry, ok := s.SteadyMap.Get(p.Extn.GetCurrID())
 	if !ok {
 		if p.Req.Info.Index != 0 {
 			return common.NewBasicError("Invalid initial index", nil,
@@ -315,7 +315,7 @@ func (s *AlgoFast) AddSteadyResv(p sbalgo.AdmParams, alloc sibra.BwCls) error {
 		// If EphemResvMap is nil, it is set during updateSourceMap again.
 		stEntry = &state.SteadyResvEntry{
 			Src:          p.Src,
-			Id:           p.Extn.ReqID.Copy(),
+			Id:           p.Extn.GetCurrID().Copy(),
 			Ifids:        p.Ifids,
 			SibraAlgo:    s,
 			EphemResvMap: s.SourceMap[p.Src].ephemMap,
@@ -323,7 +323,7 @@ func (s *AlgoFast) AddSteadyResv(p sbalgo.AdmParams, alloc sibra.BwCls) error {
 		}
 		// We do not have to worry about garbage collection of the entry
 		// since we hold the lock over the steady map.
-		if err := s.SteadyMap.Add(p.Extn.ReqID, stEntry); err != nil {
+		if err := s.SteadyMap.Add(p.Extn.GetCurrID(), stEntry); err != nil {
 			return err
 		}
 	}
@@ -339,7 +339,7 @@ func (s *AlgoFast) AddSteadyResv(p sbalgo.AdmParams, alloc sibra.BwCls) error {
 		ResvMapEntry: stEntry,
 		Idx:          p.Req.Info.Index,
 	}
-	s.TempTable.Set(p.Extn.ReqID, p.Req.Info.Index, tmpEntry, info.RttCls.Duration())
+	s.TempTable.Set(p.Extn.GetCurrID(), p.Req.Info.Index, tmpEntry, info.RttCls.Duration())
 	return nil
 }
 

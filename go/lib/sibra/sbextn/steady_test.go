@@ -37,7 +37,7 @@ func Test_EphemeralSetup(t *testing.T) {
 				IDs: []sibra.ID{sibra.NewSteadyID(addr.AS(1), 0),
 					sibra.NewSteadyID(addr.AS(2), 1), sibra.NewSteadyID(addr.AS(3), 4)},
 				Request: &sbreq.EphemReq{
-					ReqID: sibra.NewEphemID(addr.AS(4), nil),
+					ID: sibra.NewEphemID(addr.AS(4), nil),
 					Block: &sbresv.Block{
 						Info:     &sbresv.Info{},
 						SOFields: make([]*sbresv.SOField, 5),
@@ -189,7 +189,7 @@ func Test_EphemeralSetup(t *testing.T) {
 				IDs: []sibra.ID{sibra.NewSteadyID(addr.AS(1), 0),
 					sibra.NewSteadyID(addr.AS(2), 1), sibra.NewSteadyID(addr.AS(3), 4)},
 				Request: &sbreq.EphemReq{
-					ReqID: sibra.NewEphemID(addr.AS(4), nil),
+					ID: sibra.NewEphemID(addr.AS(4), nil),
 					Block: &sbresv.Block{
 						Info:     &sbresv.Info{},
 						SOFields: make([]*sbresv.SOField, 5),

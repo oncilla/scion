@@ -23,12 +23,11 @@ import (
 )
 
 const (
-	offFlags = common.LineLen - 1
-
-	flagSetup = 0x01
+	offEphemCleanFlags  = common.LineLen - 1
+	flagEphemCleanSetup = 0x01
 )
 
-var _ Request = (*EphemClean)(nil)
+var _ Data = (*EphemClean)(nil)
 
 // EphemClean is the request to cleanup unsuccessful ephemeral reservations.
 // In case the cleanup request is for a setup reservation, the request contains
@@ -36,99 +35,60 @@ var _ Request = (*EphemClean)(nil)
 //
 // 0B       1        2        3        4        5        6        7
 // +--------+--------+--------+--------+--------+--------+--------+--------+
-// | base   |          padding                        			  | flags  |
-// +--------+--------+--------+--------+--------+--------+--------+--------+
-// | Ephemeral ID (opt)													   |
+// | flags  | Ephemeral ID (opt)										   |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 // | ...																   |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 // | Info												                   |
 // +--------+--------+--------+--------+--------+--------+--------+--------+
 type EphemClean struct {
-	*Base
-	// ReqID is the requested ephemeral id in failed setup requests.
-	ReqID sibra.ID
+	// ID is the requested ephemeral id in failed setup requests.
+	ID sibra.ID
 	// Info is the reservation info of the failed request.
 	Info *sbresv.Info
-	// numHops keeps track of how many hops there are.
-	numHops int
 	// Setup indicates if this is a cleanup message for a failed setup request.
 	Setup bool
 }
 
-func EphemCleanFromRaw(raw common.RawBytes, numHops int) (*EphemClean, error) {
-	b, err := BaseFromRaw(raw)
-	if err != nil {
-		return nil, err
+func EphemCleanFromRaw(raw common.RawBytes) (*EphemClean, error) {
+	if len(raw) < 1 {
+		return nil, common.NewBasicError("Invalid ephemeral cleanup length", nil,
+			"min", 1, "actual", len(raw))
 	}
-	return EphemCleanFromBase(b, raw, numHops)
-}
 
-func EphemCleanFromBase(b *Base, raw common.RawBytes, numHops int) (*EphemClean, error) {
-	if b.Type != REphmCleanUp {
-		return nil, common.NewBasicError("Invalid request type", nil,
-			"expected", REphmCleanUp, "actual", b.Type)
-	}
-	l := 2 * common.LineLen
-	if len(raw) < l {
-		return nil, common.NewBasicError("Invalid ephemeral cleanup request length", nil,
-			"min", l, "actual", len(raw))
-	}
 	c := &EphemClean{
-		Base:    b,
-		numHops: numHops,
-		Setup:   (raw[offFlags] & flagSetup) != 0,
+		Setup: (raw[offEphemCleanFlags] & flagEphemCleanSetup) != 0,
 	}
+	l := 1 + sbresv.InfoLen
 	if c.Setup {
 		l += sibra.EphemIDLen
 	}
-	if len(raw) != l {
-		return nil, common.NewBasicError("Invalid ephemeral reservation reply length", nil,
-			"expected", int(raw[offEphmLen])*common.LineLen, "actual", len(raw))
+	if len(raw) < l {
+		return nil, common.NewBasicError("Invalid ephemeral cleanup length", nil,
+			"min", l, "actual", len(raw))
 	}
-	off := common.LineLen
+	off := 1
 	if c.Setup {
-		c.ReqID = sibra.ID(raw[off : off+sibra.EphemIDLen])
+		c.ID = sibra.ID(raw[off : off+sibra.EphemIDLen])
 		off += sibra.EphemIDLen
 	}
 	c.Info = sbresv.NewInfoFromRaw(raw[off : off+sbresv.InfoLen])
 	return c, nil
 }
 
-// NewEphemClean creates a new request to clean up a failed reservation.
-// To clean up a failed setup, a reservation id has to be provided. To clean up a failed
-// ephemeral reservation, id must be nil.
-func NewEphemClean(id sibra.ID, info *sbresv.Info, numhops int) *EphemClean {
-	c := &EphemClean{
-		Base: &Base{
-			Type:     REphmCleanUp,
-			Accepted: true,
-		},
-		ReqID:   id,
-		Info:    info,
-		numHops: numhops,
-		Setup:   id != nil,
-	}
-	return c
-}
-
-func (c *EphemClean) EphemID() sibra.ID {
-	return c.ReqID
-}
-
 func (c *EphemClean) Steady() bool {
 	return false
 }
 
-func (c *EphemClean) NumHops() int {
-	return c.numHops
-}
-
 func (c *EphemClean) Len() int {
 	if c.Setup {
-		return common.LineLen + sbresv.InfoLen + sibra.EphemIDLen
+		return 1 + sbresv.InfoLen + sibra.EphemIDLen
 	}
-	return common.LineLen + sbresv.InfoLen
+	return 1 + sbresv.InfoLen
+}
+
+func (c *EphemClean) Type() DataType {
+	return REphmCleanUp
 }
 
 func (c *EphemClean) Write(b common.RawBytes) error {
@@ -136,14 +96,11 @@ func (c *EphemClean) Write(b common.RawBytes) error {
 		return common.NewBasicError("Buffer to short", nil, "method", "sbreq.EphemClean.Write",
 			"min", c.Len(), "actual", len(b))
 	}
-	if err := c.Base.Write(b); err != nil {
-		return err
-	}
-	b[offFlags] = c.packFlags()
+	b[offEphemCleanFlags] = c.packFlags()
 	off, end := 0, common.LineLen
 	if c.Setup {
 		off, end = end, end+sibra.EphemIDLen
-		c.ReqID.Write(b[off:end])
+		c.ID.Write(b[off:end])
 	}
 	off, end = end, end+c.Info.Len()
 	if err := c.Info.Write(b[off:end]); err != nil {
@@ -155,17 +112,21 @@ func (c *EphemClean) Write(b common.RawBytes) error {
 func (c *EphemClean) packFlags() uint8 {
 	var flags uint8
 	if c.Setup {
-		flags |= flagSetup
+		flags |= flagEphemCleanSetup
 	}
 	return flags
 }
 
-func (c *EphemClean) Reverse() (Request, error) {
-	c.Response = !c.Response
-	return c, nil
+func (c *EphemClean) Reverse() (Data, error) {
+	r := &EphemClean{
+		Setup: c.Setup,
+		Info:  c.Info,
+		ID:    c.ID,
+	}
+	return r, nil
 }
 
 func (c *EphemClean) String() string {
-	return fmt.Sprintf("Base: [%s] Setup: %t Info: [%s]", c.Base, c.Setup, c.Info)
+	return fmt.Sprintf("Setup: %t Info: [%s] ID %s", c.Setup, c.Info, c.ID)
 
 }

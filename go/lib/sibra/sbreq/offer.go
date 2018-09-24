@@ -24,34 +24,26 @@ import (
 const (
 	offerFieldLen = 3
 
-	offsetOfferAlloc = 0
-	offsetOfferMin   = 1
-	offsetOfferMax   = 2
+	offsetOfferAlloc   = 0
+	offsetOfferMax     = 1
+	offsetOfferLineLen = 2
 )
 
 // Offer is the SIBRA offer Field.
-// In steady requests:
-//  - AllocBw is the bandwidth class the AS has allocated for this request
-//  - MinBw is the minimum bandwidth class the AS is willing to grant
-//    (i.e. when shrinking reservation).
-//  - MaxBw is the maximum bandwidth class the AS is willing to grant.
-// In ephemeral failed request:
-//  - MaxBw is the maximum bandwidth class the AS is willing to grant.
-//  - AllocBw + MinBw is unset.
 type Offer struct {
 	// AllocBw is the allocated bandwidth class.
 	AllocBw sibra.BwCls
-	// MinBw is the minimum bandwidth class.
-	MinBw sibra.BwCls
 	// MaxBw is the maximum bandwidth class.
 	MaxBw sibra.BwCls
+	// LineLen is the line length of the SOField
+	LineLen uint8
 }
 
 func NewOfferFromRaw(raw common.RawBytes) *Offer {
 	return &Offer{
 		AllocBw: sibra.BwCls(raw[offsetOfferAlloc]),
-		MinBw:   sibra.BwCls(raw[offsetOfferMin]),
 		MaxBw:   sibra.BwCls(raw[offsetOfferMax]),
+		LineLen: raw[offsetOfferLineLen],
 	}
 }
 
@@ -65,11 +57,11 @@ func (o *Offer) Write(b common.RawBytes) error {
 			"min", o.Len(), "actual", len(b))
 	}
 	b[offsetOfferAlloc] = uint8(o.AllocBw)
-	b[offsetOfferMin] = uint8(o.MinBw)
 	b[offsetOfferMax] = uint8(o.MaxBw)
+	b[offsetOfferLineLen] = o.LineLen
 	return nil
 }
 
 func (o *Offer) String() string {
-	return fmt.Sprintf("Alloc: %v Min: %v Max: %v", o.AllocBw, o.MinBw, o.MaxBw)
+	return fmt.Sprintf("Alloc: %v Max: %v LineLen: %d", o.AllocBw, o.MaxBw, o.LineLen)
 }

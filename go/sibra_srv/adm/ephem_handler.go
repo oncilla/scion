@@ -16,12 +16,12 @@ package adm
 
 import (
 	"context"
+	"hash"
 	"time"
 
 	"github.com/scionproto/scion/go/lib/assert"
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
-	"github.com/scionproto/scion/go/lib/hpkt"
 	"github.com/scionproto/scion/go/lib/infra"
 	"github.com/scionproto/scion/go/lib/infra/messenger"
 	"github.com/scionproto/scion/go/lib/log"
@@ -49,11 +49,11 @@ type EphemHandler struct{}
 /////////////////////////////////////////
 
 func (h *EphemHandler) HandleSetupResvReqEndAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral request on end AS", "id", pkt.Steady.ReqID)
+	log.Debug("Handling ephemeral request on end AS", "ids", pkt.Steady.IDs)
 	if err := admitSetupEphemResv(pkt); err != nil {
 		return err
 	}
-	if !pkt.Steady.Request.GetBase().Accepted {
+	if !pkt.Pld.Accepted {
 		return h.reverseAndForward(pkt)
 	}
 	if err := h.sendReqToClient(pkt, h.getTimeout(pkt)); err != nil {
@@ -62,8 +62,8 @@ func (h *EphemHandler) HandleSetupResvReqEndAS(pkt *conf.ExtPkt) error {
 			FailCode: sbreq.ClientDenied,
 			MaxBw:    0,
 		}
-		failEphemResv(pkt.Steady.Base, res)
-		if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady); err != nil {
+		failEphemResv(pkt, pkt.Steady.Base, res)
+		if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady, pkt.Pld); err != nil {
 			log.Error("Unable to clean ephemeral reservation", "err", err)
 		}
 		return h.reverseAndForward(pkt)
@@ -104,11 +104,11 @@ func (h *EphemHandler) sendReqToClient(pkt *conf.ExtPkt, to time.Duration) error
 }
 
 func (h *EphemHandler) HandleRenewResvReqEndAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral request on end AS", "id", pkt.Ephem.ReqID)
+	log.Debug("Handling ephemeral request on end AS", "ids", pkt.Ephem.IDs)
 	if err := admitRenewEphemResv(pkt); err != nil {
 		return err
 	}
-	if !pkt.Ephem.Request.GetBase().Accepted {
+	if !pkt.Pld.Accepted {
 		return h.reverseAndForward(pkt)
 	}
 	if err := h.sendReqToClient(pkt, h.getTimeout(pkt)); err != nil {
@@ -117,8 +117,8 @@ func (h *EphemHandler) HandleRenewResvReqEndAS(pkt *conf.ExtPkt) error {
 			FailCode: sbreq.ClientDenied,
 			MaxBw:    0,
 		}
-		failEphemResv(pkt.Ephem.Base, res)
-		if err := pkt.Conf.SibraAlgo.CleanEphemRenew(pkt.Ephem); err != nil {
+		failEphemResv(pkt, pkt.Ephem.Base, res)
+		if err := pkt.Conf.SibraAlgo.CleanEphemRenew(pkt.Ephem, pkt.Pld); err != nil {
 			log.Error("Unable to clean ephemeral reservation", "err", err)
 		}
 		return h.reverseAndForward(pkt)
@@ -127,9 +127,9 @@ func (h *EphemHandler) HandleRenewResvReqEndAS(pkt *conf.ExtPkt) error {
 }
 
 func (h *EphemHandler) HandleSetupResvRepEndAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral response on end AS", "id", pkt.Steady.ReqID)
-	if !pkt.Steady.Request.GetBase().Accepted {
-		if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady); err != nil {
+	log.Debug("Handling ephemeral response on end AS", "ids", pkt.Steady.IDs)
+	if !pkt.Pld.Accepted {
+		if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady, pkt.Pld); err != nil {
 			log.Error("Unable to clean ephemeral reservation", "er", err)
 		}
 	}
@@ -137,21 +137,21 @@ func (h *EphemHandler) HandleSetupResvRepEndAS(pkt *conf.ExtPkt) error {
 }
 
 func (h *EphemHandler) HandleRenewResvRepEndAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral response on end AS", "id", pkt.Ephem.ReqID)
+	log.Debug("Handling ephemeral response on end AS", "ids", pkt.Ephem.IDs)
 	// TODO(roosd): check if failed or not
 	return util.Forward(pkt)
 }
 
 func (h *EphemHandler) HandleCleanSetupEndAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral clean up on end AS", "id", pkt.Steady.ReqID)
-	if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady); err != nil {
+	log.Debug("Handling ephemeral clean up on end AS", "ids", pkt.Steady.IDs)
+	if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady, pkt.Pld); err != nil {
 		return common.NewBasicError("Unable to clean ephemeral reservation", err)
 	}
 	return h.reverseAndForward(pkt)
 }
 
 func (h *EphemHandler) HandleCleanRenewEndAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral clean up on end AS", "id", pkt.Ephem.ReqID)
+	log.Debug("Handling ephemeral clean up on end AS", "ids", pkt.Ephem.IDs)
 	// TODO(roosd)
 	return common.NewBasicError("Not implemented", nil)
 }
@@ -169,7 +169,7 @@ func (h *EphemHandler) reverseAndForward(pkt *conf.ExtPkt) error {
 
 func (h *EphemHandler) HandleSetupResvReqHopAS(pkt *conf.ExtPkt) error {
 	// TODO(roosd): sanity check -> e.g. only requests
-	log.Debug("Handling ephemeral request on hop AS", "id", pkt.Steady.ReqID)
+	log.Debug("Handling ephemeral request on hop AS", "ids", pkt.Steady.IDs)
 	if err := admitSetupEphemResv(pkt); err != nil {
 		return err
 	}
@@ -178,7 +178,7 @@ func (h *EphemHandler) HandleSetupResvReqHopAS(pkt *conf.ExtPkt) error {
 
 func (h *EphemHandler) HandleRenewResvReqHopAS(pkt *conf.ExtPkt) error {
 	// TODO(roosd): sanity check -> e.g. only requests
-	log.Debug("Handling ephemeral renew request on hop AS", "id", pkt.Ephem.ReqID)
+	log.Debug("Handling ephemeral renew request on hop AS", "ids", pkt.Ephem.IDs)
 	if err := admitRenewEphemResv(pkt); err != nil {
 		return err
 	}
@@ -186,9 +186,9 @@ func (h *EphemHandler) HandleRenewResvReqHopAS(pkt *conf.ExtPkt) error {
 }
 
 func (h *EphemHandler) HandleSetupResvRepHopAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral response on hop AS", "id", pkt.Steady.ReqID)
-	if !pkt.Steady.Request.GetBase().Accepted {
-		if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady); err != nil {
+	log.Debug("Handling ephemeral response on hop AS", "ids", pkt.Steady.IDs)
+	if !pkt.Pld.Accepted {
+		if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady, pkt.Pld); err != nil {
 			log.Error("Unable to clean ephemeral reservation", "er", err)
 		}
 	}
@@ -196,7 +196,7 @@ func (h *EphemHandler) HandleSetupResvRepHopAS(pkt *conf.ExtPkt) error {
 }
 
 func (h *EphemHandler) HandleRenewResvRepHopAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral response on hop AS", "id", pkt.Ephem.ReqID)
+	log.Debug("Handling ephemeral response on hop AS", "ids", pkt.Ephem.IDs)
 	// TODO(roosd): check if failed or not
 	return util.Forward(pkt)
 }
@@ -207,14 +207,14 @@ func (h *EphemHandler) HandleRenewResvRepHopAS(pkt *conf.ExtPkt) error {
 
 func (h *EphemHandler) HandleSetupResvReqTransAS(pkt *conf.ExtPkt) error {
 	// TODO(roosd): sanity check -> e.g. only requests
-	log.Debug("Handling ephemeral request on transfer AS", "id", pkt.Steady.ReqID)
+	log.Debug("Handling ephemeral request on transfer AS", "ids", pkt.Steady.IDs)
 	if err := admitSetupEphemResv(pkt); err != nil {
 		return err
 	}
 	return util.Forward(pkt)
 }
 func (h *EphemHandler) HandleRenewResvReqTransAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral renew request on transfer AS", "id", pkt.Ephem.ReqID)
+	log.Debug("Handling ephemeral renew request on transfer AS", "ids", pkt.Ephem.IDs)
 	if err := admitRenewEphemResv(pkt); err != nil {
 		return err
 	}
@@ -222,9 +222,9 @@ func (h *EphemHandler) HandleRenewResvReqTransAS(pkt *conf.ExtPkt) error {
 }
 
 func (h *EphemHandler) HandleSetupResvRepTransAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral response on transfer AS", "id", pkt.Steady.ReqID)
-	if !pkt.Steady.Request.GetBase().Accepted {
-		if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady); err != nil {
+	log.Debug("Handling ephemeral response on transfer AS", "ids", pkt.Steady.IDs)
+	if !pkt.Pld.Accepted {
+		if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady, pkt.Pld); err != nil {
 			log.Error("Unable to clean ephemeral reservation", "er", err)
 		}
 	}
@@ -232,7 +232,7 @@ func (h *EphemHandler) HandleSetupResvRepTransAS(pkt *conf.ExtPkt) error {
 }
 
 func (h *EphemHandler) HandleRenewResvRepTransAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral response on transfer AS", "id", pkt.Ephem.ReqID)
+	log.Debug("Handling ephemeral response on transfer AS", "ids", pkt.Ephem.IDs)
 	// TODO(roosd): check if failed or not
 	return util.Forward(pkt)
 }
@@ -243,7 +243,7 @@ func (h *EphemHandler) HandleRenewResvRepTransAS(pkt *conf.ExtPkt) error {
 
 func (h *EphemHandler) HandleSetupResvReqStartAS(pkt *conf.ExtPkt) error {
 	// TODO(roosd): sanity check -> e.g. only requests
-	log.Debug("Handling ephemeral setup request on start AS", "id", pkt.Steady.ReqID)
+	log.Debug("Handling ephemeral setup request on start AS", "ids", pkt.Steady.IDs)
 	if err := admitSetupEphemResv(pkt); err != nil {
 		return err
 	}
@@ -252,7 +252,7 @@ func (h *EphemHandler) HandleSetupResvReqStartAS(pkt *conf.ExtPkt) error {
 
 func (h *EphemHandler) HandleRenewResvReqStartAS(pkt *conf.ExtPkt) error {
 	// TODO(roosd): sanity check -> e.g. only requests
-	log.Debug("Handling ephemeral renew request on start AS", "id", pkt.Ephem.ReqID)
+	log.Debug("Handling ephemeral renew request on start AS", "ids", pkt.Ephem.IDs)
 	if err := admitRenewEphemResv(pkt); err != nil {
 		return err
 	}
@@ -260,9 +260,9 @@ func (h *EphemHandler) HandleRenewResvReqStartAS(pkt *conf.ExtPkt) error {
 }
 
 func (h *EphemHandler) HandleSetupResvRepStartAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral response on start AS", "id", pkt.Steady.ReqID)
-	if !pkt.Steady.Request.GetBase().Accepted {
-		if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady); err != nil {
+	log.Debug("Handling ephemeral response on start AS", "ids", pkt.Steady.IDs)
+	if !pkt.Pld.Accepted {
+		if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady, pkt.Pld); err != nil {
 			log.Error("Unable to clean ephemeral reservation", "er", err)
 		}
 	}
@@ -270,7 +270,7 @@ func (h *EphemHandler) HandleSetupResvRepStartAS(pkt *conf.ExtPkt) error {
 }
 
 func (h *EphemHandler) HandleRenewResvRepStartAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral response on start AS", "id", pkt.Ephem.ReqID)
+	log.Debug("Handling ephemeral response on start AS", "ids", pkt.Ephem.IDs)
 	// TODO(roosd): check if failed or not
 	return h.sendRepToClient(pkt)
 }
@@ -298,8 +298,8 @@ func (h *EphemHandler) sendRepToClient(pkt *conf.ExtPkt) error {
 }
 
 func (h *EphemHandler) createClientPkt(pkt *conf.ExtPkt) (common.RawBytes, *snet.Addr, error) {
-	buf := make(common.RawBytes, pkt.Spkt.TotalLen())
-	if _, err := hpkt.WriteScnPkt(pkt.Spkt, buf); err != nil {
+	buf, err := util.PackWithPld(pkt.Spkt, pkt.Pld)
+	if err != nil {
 		return nil, nil, err
 	}
 	saddr := &snet.Addr{
@@ -315,25 +315,25 @@ func (h *EphemHandler) createClientPkt(pkt *conf.ExtPkt) (common.RawBytes, *snet
 /////////////////////////////////////////
 
 func (h *EphemHandler) HandleCleanSetup(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral clean up setup", "id", pkt.Steady.ReqID)
-	if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady); err != nil {
+	log.Debug("Handling ephemeral clean up setup", "ids", pkt.Steady.IDs)
+	if err := pkt.Conf.SibraAlgo.CleanEphemSetup(pkt.Steady, pkt.Pld); err != nil {
 		return common.NewBasicError("Unable to clean ephemeral reservation", err)
 	}
 	return util.Forward(pkt)
 }
 
 func (h *EphemHandler) HandleCleanRenew(pkt *conf.ExtPkt) error {
-	log.Debug("Handling ephemeral clean up renewal", "id", pkt.Ephem.ReqID)
+	log.Debug("Handling ephemeral clean up renewal", "ids", pkt.Ephem.IDs)
 	// TODO(roosd)
 	return util.Forward(pkt)
 }
 
 func admitSetupEphemResv(pkt *conf.ExtPkt) error {
-	res, err := pkt.Conf.SibraAlgo.AdmitEphemSetup(pkt.Steady)
+	res, err := pkt.Conf.SibraAlgo.AdmitEphemSetup(pkt.Steady, pkt.Pld)
 	if err != nil {
 		return err
 	}
-	if pkt.Steady.Request.GetBase().Accepted && res.FailCode == sbreq.FailCodeNone {
+	if pkt.Pld.Accepted && res.FailCode == sbreq.FailCodeNone {
 		ifids, err := util.GetResvIfids(pkt.Steady.Base, pkt.Spkt)
 		if assert.On {
 			assert.Must(err == nil, "GetResvIfids must succeed", "err", err)
@@ -341,44 +341,60 @@ func admitSetupEphemResv(pkt *conf.ExtPkt) error {
 		if pkt.Steady.IsTransfer() {
 			ifids.EgIfid = pkt.Steady.ActiveBlocks[pkt.Steady.CurrSteady+1].SOFields[0].Egress
 		}
-		if err := issueSOF(pkt.Steady.Base, ifids, pkt.Conf); assert.On && err != nil {
+		ids := make([]sibra.ID, 1, 4)
+		ids[0] = pkt.Pld.Data.(*sbreq.EphemReq).ID
+		ids = append(ids, pkt.Steady.IDs...)
+		err = issueSOF(pkt.Pld.Data.(*sbreq.EphemReq), ids, pkt.Steady.PathLens, ifids,
+			pkt.Steady.CurrHop, pkt.Conf)
+		if assert.On && err != nil {
 			assert.Must(err == nil, "issueSOF must not fail", "err", err)
 		}
 	}
 	if res.FailCode != sbreq.FailCodeNone {
-		failEphemResv(pkt.Steady.Base, res)
+		failEphemResv(pkt, pkt.Steady.Base, res)
 	}
 	return nil
 }
 
 func admitRenewEphemResv(pkt *conf.ExtPkt) error {
-	res, err := pkt.Conf.SibraAlgo.AdmitEphemRenew(pkt.Ephem)
+	res, err := pkt.Conf.SibraAlgo.AdmitEphemRenew(pkt.Ephem, pkt.Pld)
 	if err != nil {
 		return err
 	}
-	if pkt.Ephem.Request.GetBase().Accepted && res.FailCode == sbreq.FailCodeNone {
+	if pkt.Pld.Accepted && res.FailCode == sbreq.FailCodeNone {
 		ifids, err := util.GetResvIfids(pkt.Ephem.Base, pkt.Spkt)
 		if assert.On {
 			assert.Must(err == nil, "GetResvIfids must succeed", "err", err)
 		}
-		if err := issueSOF(pkt.Ephem.Base, ifids, pkt.Conf); assert.On && err != nil {
+		err = issueSOF(pkt.Pld.Data.(*sbreq.EphemReq), pkt.Ephem.IDs, pkt.Ephem.PathLens, ifids,
+			pkt.Ephem.CurrHop, pkt.Conf)
+		if assert.On && err != nil {
 			assert.Must(err == nil, "issueSOF must not fail", "err", err)
 		}
 	}
 	if res.FailCode != sbreq.FailCodeNone {
-		failEphemResv(pkt.Ephem.Base, res)
+		failEphemResv(pkt, pkt.Ephem.Base, res)
 	}
 	return nil
 }
 
-func failEphemResv(base *sbextn.Base, res sbalgo.EphemRes) {
-	if base.Request.GetBase().Accepted {
-		r := base.Request.(*sbreq.EphemReq)
-		base.Request = r.Fail(res.FailCode, res.MaxBw, base.CurrHop)
+func issueSOF(req *sbreq.EphemReq, ids []sibra.ID, plens []uint8, ifids sbalgo.IFTuple,
+	sofIdx int, conf *conf.Conf) error {
+
+	mac := conf.SOFMacPool.Get().(hash.Hash)
+	defer conf.SOFMacPool.Put(mac)
+	return req.SetSOF(mac, ids, plens, ifids.InIfid, ifids.EgIfid, sofIdx)
+}
+
+func failEphemResv(pkt *conf.ExtPkt, base *sbextn.Base, res sbalgo.EphemRes) {
+	if pkt.Pld.Accepted {
+		r := pkt.Pld.Data.(*sbreq.EphemReq)
+		pkt.Pld.Data = r.Fail(res.FailCode, res.MaxBw, base.CurrHop)
+		pkt.Pld.Accepted = false
 		// TODO(roosd): remove
-		log.Debug("I'm failing the reservation")
+		log.Debug("I'm failing the reservation", "res", res)
 	} else {
-		r := base.Request.(*sbreq.EphemFailed)
+		r := pkt.Pld.Data.(*sbreq.EphemFailed)
 		if r.FailCode < res.FailCode {
 			r.FailCode = res.FailCode
 		}
@@ -398,6 +414,9 @@ func (h *EphemHandler) reversePkt(pkt *conf.ExtPkt) error {
 		}
 	}
 	if err := pkt.Spkt.Reverse(); err != nil {
+		return err
+	}
+	if err := pkt.Pld.Reverse(); err != nil {
 		return err
 	}
 	pkt.Spkt.SrcHost = pkt.Conf.PublicAddr.Host

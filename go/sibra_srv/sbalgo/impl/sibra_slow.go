@@ -191,8 +191,8 @@ func (s *AlgoSlow) srcDem(src addr.IA, ifids sbalgo.IFTuple, p sbalgo.AdmParams)
 	// Consider the reservation if it does not exist yet
 	// in the source to id mapping
 	if ifids == p.Ifids && src == p.Src {
-		if _, ok := s.SrcToIds[src][string([]byte(p.Extn.ReqID))]; !ok {
-			sum += s.reqDem(p.Extn.ReqID, ifids, p)
+		if _, ok := s.SrcToIds[src][string([]byte(p.Extn.GetCurrID()))]; !ok {
+			sum += s.reqDem(p.Extn.GetCurrID(), ifids, p)
 		}
 	}
 	return sum
@@ -203,7 +203,7 @@ func (s *AlgoSlow) reqDem(id sibra.ID, ifids sbalgo.IFTuple, p sbalgo.AdmParams)
 	capEg := s.Infos[ifids.EgIfid].Egress.Total
 	// In case the calculation is done for the id which is currently
 	// requested, return MaxBW if the interfaces are matching.
-	if id.Eq(p.Extn.ReqID) {
+	if id.Eq(p.Extn.GetCurrID()) {
 		if ifids == p.Ifids {
 			return minBps(minBps(capIn, capEg), p.Req.MaxBw.Bps())
 		}
@@ -227,7 +227,7 @@ func (s *AlgoSlow) linkRatio(p sbalgo.AdmParams) float64 {
 		var srcAlloc sibra.Bps
 		for i := range ids {
 			entry, ok := s.SteadyMap.Get(sibra.ID(i))
-			if ok && entry.Ifids == p.Ifids && !entry.Id.Eq(p.Extn.ReqID) {
+			if ok && entry.Ifids == p.Ifids && !entry.Id.Eq(p.Extn.GetCurrID()) {
 				srcAlloc += entry.AllocBw()
 			}
 		}
@@ -251,7 +251,7 @@ func (s *AlgoSlow) AddSteadyResv(p sbalgo.AdmParams, alloc sibra.BwCls) error {
 		MaxBW: p.Req.MaxBw,
 	}
 
-	stEntry, ok := s.SteadyMap.Get(p.Extn.ReqID)
+	stEntry, ok := s.SteadyMap.Get(p.Extn.GetCurrID())
 	if !ok {
 		if p.Req.Info.Index != 0 {
 			return common.NewBasicError("Invalid initial index", nil,
@@ -259,14 +259,14 @@ func (s *AlgoSlow) AddSteadyResv(p sbalgo.AdmParams, alloc sibra.BwCls) error {
 		}
 		stEntry = &state.SteadyResvEntry{
 			Src:          p.Src,
-			Id:           p.Extn.ReqID.Copy(),
+			Id:           p.Extn.GetCurrID().Copy(),
 			Ifids:        p.Ifids,
 			SibraAlgo:    s,
 			EphemResvMap: state.NewEpehmResvMap(),
 		}
 		// We do not have to worry about garbage collection of the entry
 		// since we hold the lock over the steady map.
-		if err := s.SteadyMap.Add(p.Extn.ReqID, stEntry); err != nil {
+		if err := s.SteadyMap.Add(p.Extn.GetCurrID(), stEntry); err != nil {
 			return err
 		}
 	}
@@ -280,7 +280,7 @@ func (s *AlgoSlow) AddSteadyResv(p sbalgo.AdmParams, alloc sibra.BwCls) error {
 		ResvMapEntry: stEntry,
 		Idx:          p.Req.Info.Index,
 	}
-	s.TempTable.Set(p.Extn.ReqID, p.Req.Info.Index, tmpEntry, info.RttCls.Duration())
+	s.TempTable.Set(p.Extn.GetCurrID(), p.Req.Info.Index, tmpEntry, info.RttCls.Duration())
 	return nil
 }
 

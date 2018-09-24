@@ -163,7 +163,7 @@ func (r *resolver) setupEphem(entry *resvEntry, p *spathmeta.AppPath, sb *snet.A
 					r.handleSetupErr(entry, err)
 				},
 				timeFunc: func(i reqstrI) {
-					request := i.GetExtn().(*sbextn.Steady).Request.(*sbreq.EphemReq)
+					request := i.GetPld().Data.(*sbreq.EphemReq)
 					r.handleSetupTimeout(entry, request, p.Entry.Path.DstIA(), sb)
 				},
 			},
@@ -202,8 +202,8 @@ func (r *resolver) handleSetupTimeout(entry *resvEntry, request *sbreq.EphemReq,
 	reqstr := &EphemCleanSetup{
 		cleaner: &cleaner{
 			reqstr: &reqstr{
-				Logger:     r.New("reqstr", "Clean Setup "+request.ReqID.String()),
-				id:         request.ReqID,
+				Logger:     r.New("reqstr", "Clean Setup "+request.ID.String()),
+				id:         request.ID,
 				idx:        failedInfo.Index,
 				entry:      entry,
 				repMaster:  r.repMaster,
@@ -281,7 +281,7 @@ func (r *resolver) renewEphem(entry *resvEntry, ext *sbextn.Ephemeral,
 					r.handleResvErr(entry, ephemExists, err)
 				},
 				timeFunc: func(i reqstrI) {
-					request := i.GetExtn().(*sbextn.Ephemeral).Request.(*sbreq.EphemReq)
+					request := i.GetPld().Data.(*sbreq.EphemReq)
 					r.handleRenewTimeout(entry, ephemId, request, p.Entry.Path.DstIA(), sb)
 				},
 			},

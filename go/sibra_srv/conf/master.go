@@ -31,13 +31,14 @@ type ExtPkt struct {
 	Spkt   *spkt.ScnPkt
 	Steady *sbextn.Steady
 	Ephem  *sbextn.Ephemeral
+	Pld    *sbreq.Pld
 	Conf   *Conf
 }
 
 type NotifyKey struct {
 	Id      sibra.ID
 	Idx     sibra.Index
-	ReqType sbreq.RequestType
+	ReqType sbreq.DataType
 }
 
 func (n *NotifyKey) String() string {

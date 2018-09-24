@@ -122,7 +122,7 @@ func New(srvc sciond.Service, conn *snet.Conn, store *trust.Store,
 			Conn: sdConn,
 		},
 		ephemRepHandler: &ephemRepHandler{
-			notify: make(map[string]chan common.Extension),
+			notify: make(map[string]chan notifyEvent),
 			Logger: logger.New("handles", "ephemRep"),
 		},
 		msgr: messenger.New(

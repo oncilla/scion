@@ -170,10 +170,11 @@ func setupParams(ifids sbalgo.IFTuple, src addr.IA, suf uint32, maxBw sibra.BwCl
 		panic(err)
 	}
 	p := sbalgo.AdmParams{
-		Ifids: ifids,
-		Extn:  extn,
-		Src:   src,
-		Req:   req,
+		Ifids:    ifids,
+		Extn:     extn,
+		Src:      src,
+		Req:      req,
+		Accepted: true,
 	}
 	return p
 }

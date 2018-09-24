@@ -39,11 +39,11 @@ type ephemRepHandler struct {
 	log.Logger
 	// notify is a mapping from notifyKey to a notify channel
 	// for a listener.
-	notify map[string]chan common.Extension
+	notify map[string]chan notifyEvent
 }
 
 // Register allows listeners to register for certain notify keys.
-func (h *ephemRepHandler) Register(key *notifyKey, c chan common.Extension) error {
+func (h *ephemRepHandler) Register(key *notifyKey, c chan notifyEvent) error {
 	h.Lock()
 	defer h.Unlock()
 	if _, ok := h.notify[key.String()]; ok {
@@ -75,11 +75,11 @@ func (h *ephemRepHandler) handle(saddr *snet.Addr, pld *sibra_mgmt.EphemRep) err
 	if err != nil {
 		return err
 	}
-	ext, base, err := parseExt(pkt)
+	event, base, err := parseRep(pkt)
 	if err != nil {
 		return err
 	}
-	key, err := h.getNotifyKey(base)
+	key, err := h.getNotifyKey(base, event.pld)
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (h *ephemRepHandler) handle(saddr *snet.Addr, pld *sibra_mgmt.EphemRep) err
 	defer h.Unlock()
 	if c, ok := h.notify[key.String()]; ok {
 		select {
-		case c <- ext:
+		case c <- event:
 		default:
 			return common.NewBasicError("Drop reply due to full buffer", nil)
 		}
@@ -96,22 +96,33 @@ func (h *ephemRepHandler) handle(saddr *snet.Addr, pld *sibra_mgmt.EphemRep) err
 	return common.NewBasicError("No listener registered", nil, "key", key)
 }
 
-func (h *ephemRepHandler) getNotifyKey(base *sbextn.Base) (notifyKey, error) {
+func (h *ephemRepHandler) getNotifyKey(base *sbextn.Base, pld *sbreq.Pld) (notifyKey, error) {
+	var id sibra.ID
 	var idx sibra.Index
-	switch e := base.Request.(type) {
+	switch e := pld.Data.(type) {
 	case *sbreq.EphemReq:
+		id = e.ID
 		idx = e.Block.Info.Index
 	case *sbreq.EphemFailed:
+		id = e.ID
 		idx = e.Info.Index
 	case *sbreq.EphemClean:
+		id = e.ID
 		idx = e.Info.Index
 	default:
 		return notifyKey{}, common.NewBasicError("Request type not supported", nil, "req", e)
 	}
+	if id == nil {
+		if base.Steady {
+			return notifyKey{}, common.NewBasicError("No ID for request on steady reservation", nil)
+		}
+		id = base.GetCurrID()
+	}
+
 	key := notifyKey{
-		Id:      base.ReqID,
+		Id:      id,
 		Idx:     idx,
-		ReqType: base.Request.GetBase().Type,
+		ReqType: pld.Type,
 	}
 	return key, nil
 }
@@ -147,32 +158,36 @@ func (h *ephemReqHandler) handle(saddr *snet.Addr, pld *sibra_mgmt.EphemReq) (*s
 	if err != nil {
 		return nil, err
 	}
-	ext, base, err := parseExt(pkt)
+	event, base, err := parseRep(pkt)
 	if err != nil {
 		return nil, err
 	}
-	ok, err := h.checkWhitelist(pkt.SrcIA, pkt.SrcHost.IP(), base)
+	ok, err := h.checkWhitelist(pkt.SrcIA, pkt.SrcHost.IP(), event.pld, base.CurrHop)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
-		h.Debug("Denied request (client not on whitelist)",
-			"addr", saddr, "req", pld)
+		h.Debug("Denied request (client not on whitelist)", "addr", saddr, "req", pld)
 	}
 	// FIXME(roosd): remove when extension reversing is supported
-	if _, err = ext.Reverse(); err != nil {
+	if _, err = event.extn.Reverse(); err != nil {
+		return nil, err
+	}
+	if err = event.pld.Reverse(); err != nil {
 		return nil, err
 	}
 	if err := pkt.Reverse(); err != nil {
 		return nil, err
 	}
+	pkt.Pld = event.pld
 	return pkt, nil
 }
 
-func (h *ephemReqHandler) checkWhitelist(ia addr.IA, ip net.IP, base *sbextn.Base) (bool, error) {
-	if r, ok := base.Request.(*sbreq.EphemReq); ok {
+func (h *ephemReqHandler) checkWhitelist(ia addr.IA, ip net.IP, pld *sbreq.Pld,
+	currHop int) (bool, error) {
+	if r, ok := pld.Data.(*sbreq.EphemReq); ok {
 		if !h.whitelist.isAllowed(ia, ip) {
-			base.Request = r.Fail(sbreq.ClientDenied, 0, base.CurrHop)
+			pld.Data = r.Fail(sbreq.ClientDenied, 0, currHop)
 			return false, nil
 		}
 		return true, nil
@@ -205,10 +220,10 @@ func (h *ephemReqHandler) logDropReq(addr net.Addr, req *sibra_mgmt.EphemReq, er
 	h.Error("Dropping request", "addr", addr, "req", req, "err", err)
 }
 
-func parseExt(pkt *spkt.ScnPkt) (common.Extension, *sbextn.Base, error) {
+func parseRep(pkt *spkt.ScnPkt) (notifyEvent, *sbextn.Base, error) {
 	exts := pkt.GetExtn(common.ExtnSIBRAType)
 	if len(exts) < 1 {
-		return nil, nil, common.NewBasicError("No SIBRA header found", nil)
+		return notifyEvent{}, nil, common.NewBasicError("No SIBRA header found", nil)
 
 	}
 	ext := exts[0]
@@ -219,5 +234,13 @@ func parseExt(pkt *spkt.ScnPkt) (common.Extension, *sbextn.Base, error) {
 	case *sbextn.Ephemeral:
 		base = sibraExtn.Base
 	}
-	return ext, base, nil
+	pld, err := sbreq.PldFromRaw(pkt.Pld.(common.RawBytes))
+	if err != nil {
+		return notifyEvent{}, nil, common.NewBasicError("Unable to parse payload", err)
+	}
+	event := notifyEvent{
+		extn: ext,
+		pld:  pld,
+	}
+	return event, base, nil
 }

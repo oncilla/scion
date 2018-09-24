@@ -55,12 +55,22 @@ func Forward(pkt *conf.ExtPkt) error {
 			return err
 		}
 	}
-	buf := make(common.RawBytes, pkt.Spkt.TotalLen())
-	if _, err = hpkt.WriteScnPkt(pkt.Spkt, buf); err != nil {
+	buf, err := PackWithPld(pkt.Spkt, pkt.Pld)
+	if err != nil {
 		return err
 	}
 	_, err = pkt.Conf.Conn.WriteTo(buf, dst)
 	return err
+}
+
+func PackWithPld(pkt *spkt.ScnPkt, pld common.Payload) (common.RawBytes, error) {
+	pkt.Pld = pld
+	buf := make(common.RawBytes, pkt.TotalLen())
+	n, err := hpkt.WriteScnPkt(pkt, buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf[:n], nil
 }
 
 func GetAddrForIFID(ifid common.IFIDType, topo *topology.Topo) (*reliable.AppAddr, error) {

@@ -54,7 +54,7 @@ func (r *ResvMaster) Run() {
 
 func (r *ResvMaster) Handle(pkt *conf.ExtPkt) error {
 	var idx sibra.Index
-	switch e := pkt.Steady.Request.(type) {
+	switch e := pkt.Pld.Data.(type) {
 	case *sbreq.SteadySucc:
 		idx = e.Block.Info.Index
 	case *sbreq.SteadyReq:
@@ -65,9 +65,9 @@ func (r *ResvMaster) Handle(pkt *conf.ExtPkt) error {
 		return common.NewBasicError("Invalid reply", nil)
 	}
 	key := conf.NotifyKey{
-		Id:      pkt.Steady.ReqID,
+		Id:      pkt.Steady.GetCurrID(),
 		Idx:     idx,
-		ReqType: pkt.Steady.Request.GetBase().Type,
+		ReqType: pkt.Pld.Type,
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()

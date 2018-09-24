@@ -239,4 +239,6 @@ func (s State) String() string {
 }
 
 // TODO(roosd): implement.
-type RatioCls uint8
+type SplitCls uint8
+
+type EndProps uint8

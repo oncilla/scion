@@ -53,20 +53,11 @@ func EphemeralFromBase(base *Base, raw common.RawBytes) (*Ephemeral, error) {
 		return nil, err
 	}
 	off += e.ActiveBlocks[0].Len()
-	switch {
-	case e.IsRequest:
-		if err := e.parseRequest(raw[off:]); err != nil {
-			return nil, common.NewBasicError("Unable to parse request", err,
-				"raw", raw, "off", off, "len", len(raw)-off)
-		}
-		return e, nil
-	default:
-		if off != len(raw) {
-			return nil, common.NewBasicError(InvalidExtnLength, nil,
-				"extn", e, "expected", off, "actual", len(raw))
-		}
-		return e, nil
+	if off != len(raw) {
+		return nil, common.NewBasicError(InvalidExtnLength, nil,
+			"extn", e, "expected", off, "actual", len(raw))
 	}
+	return e, nil
 }
 
 // SteadyIds returns the steady reservation ids in the reservation direction.
@@ -81,17 +72,16 @@ func (e *Ephemeral) IsSteadyTransfer() bool {
 	return transFwd || transRev
 }
 
-// ToRequest modifies the ephemeral extension and adds the provided request.
-func (e *Ephemeral) ToRequest(r sbreq.Request) error {
-	if r.Steady() {
-		return common.NewBasicError("Steady request not supported", nil, "req", r)
+// ToRequest modifies the ephemeral extension to fit the request payload.
+func (e *Ephemeral) ToRequest(p *sbreq.Pld) error {
+	if p.Data.Steady() {
+		return common.NewBasicError("Steady request not supported", nil, "req", p)
 	}
-	if !r.Steady() && r.NumHops() != e.TotalHops {
+	if !p.Data.Steady() && int(p.NumHops) != e.TotalHops {
 		return common.NewBasicError("NumHops in SOFields and request mismatch", nil,
-			"offer", r.NumHops(), "sof", e.TotalHops)
+			"numHops", p.NumHops, "totalHops", e.TotalHops)
 	}
 	e.IsRequest = true
-	e.Request = r
 	e.BestEffort = false
 	return nil
 }
@@ -106,18 +96,6 @@ func (e *Ephemeral) Copy() common.Extension {
 		assert.Must(err == nil, "Parsing must not fail")
 	}
 	return c
-}
-
-// Reverse reverses the reservation and the request if present.
-func (e *Ephemeral) Reverse() (bool, error) {
-	if e.Request != nil {
-		rev, err := e.Request.Reverse()
-		if err != nil {
-			return false, common.NewBasicError("Unable to reverse steady extension", err)
-		}
-		e.Request = rev
-	}
-	return e.Base.Reverse()
 }
 
 func (e *Ephemeral) String() string {

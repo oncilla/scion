@@ -44,14 +44,19 @@ const (
 // repMaster receives all SIBRA replies and forwards them to the
 // registered listener.
 type repMaster interface {
-	Register(key *notifyKey, c chan common.Extension) error
+	Register(key *notifyKey, c chan notifyEvent) error
 	Deregister(key *notifyKey)
+}
+
+type notifyEvent struct {
+	extn common.Extension
+	pld  *sbreq.Pld
 }
 
 type notifyKey struct {
 	Id      sibra.ID
 	Idx     sibra.Index
-	ReqType sbreq.RequestType
+	ReqType sbreq.DataType
 }
 
 func (n *notifyKey) String() string {
@@ -59,10 +64,11 @@ func (n *notifyKey) String() string {
 }
 
 type reqstrI interface {
-	PrepareRequest() (common.Extension, error)
+	PrepareRequest() (common.Extension, *sbreq.Pld, error)
 	GetExtn() common.Extension
+	GetPld() *sbreq.Pld
 	NotifyKeys() []*notifyKey
-	HandleRep(ext common.Extension) (bool, error)
+	HandleRep(event notifyEvent) (bool, error)
 	OnError(err error)
 	OnTimeout()
 }
@@ -91,30 +97,31 @@ type reqstr struct {
 	dstHost    addr.HostAddr
 	timeout    time.Duration
 	extn       common.Extension
+	pld        *sbreq.Pld
 }
 
 func (r *reqstr) Run(i reqstrI) {
 	r.Debug("Starting requester")
 	var err error
-	r.extn, err = i.PrepareRequest()
+	r.extn, r.pld, err = i.PrepareRequest()
 	if err != nil {
 		r.callErr(common.NewBasicError(ErrorPrepareRequest, err), i)
 		return
 	}
-	notify := make(chan common.Extension, 10)
+	notify := make(chan notifyEvent, 10)
 	defer close(notify)
 	for _, notifyKey := range i.NotifyKeys() {
 		r.repMaster.Register(notifyKey, notify)
 		defer r.repMaster.Deregister(notifyKey)
 	}
-	if err := r.sendRequest(r.extn); err != nil {
+	if err := r.sendRequest(); err != nil {
 		r.callErr(common.NewBasicError(ErrorSendReq, err), i)
 		return
 	}
 	select {
 	// FIXME(roosd): handle multiple replies
-	case ext := <-notify:
-		succ, err := i.HandleRep(ext)
+	case event := <-notify:
+		succ, err := i.HandleRep(event)
 		if err != nil {
 			r.callErr(common.NewBasicError(ErrorHandleRep, err), i)
 			return
@@ -134,6 +141,10 @@ func (r *reqstr) GetExtn() common.Extension {
 	return r.extn
 }
 
+func (r *reqstr) GetPld() *sbreq.Pld {
+	return r.pld
+}
+
 func (r *reqstr) callErr(err error, i reqstrI) {
 	i.OnError(err)
 	if r.errFunc != nil {
@@ -148,15 +159,15 @@ func (r reqstr) callTimeOut(i reqstrI) {
 	}
 }
 
-func (r *reqstr) sendRequest(ext common.Extension) error {
+func (r *reqstr) sendRequest() error {
 	pkt := &spkt.ScnPkt{
 		DstIA:   r.dstIA,
 		SrcIA:   r.srcIA,
 		DstHost: r.dstHost,
 		SrcHost: r.srcHost,
-		HBHExt:  []common.Extension{ext},
+		HBHExt:  []common.Extension{r.extn},
 		L4:      l4.L4Header(&l4.UDP{Checksum: make(common.RawBytes, 2)}),
-		Pld:     make(common.RawBytes, 0),
+		Pld:     r.pld,
 	}
 	buf := make(common.RawBytes, pkt.TotalLen())
 	_, err := hpkt.WriteScnPkt(pkt, buf)
@@ -165,8 +176,12 @@ func (r *reqstr) sendRequest(ext common.Extension) error {
 	}
 	ctx, cancelF := context.WithTimeout(context.Background(), r.timeout)
 	defer cancelF()
-	err = r.msgr.SendSibraEphemReq(ctx, &sibra_mgmt.EphemReq{&sibra_mgmt.ExternalPkt{RawPkt: buf}},
-		r.localSvcSB, requestID.Next())
+	req := &sibra_mgmt.EphemReq{
+		ExternalPkt: &sibra_mgmt.ExternalPkt{
+			RawPkt: buf,
+		},
+	}
+	err = r.msgr.SendSibraEphemReq(ctx, req, r.localSvcSB, requestID.Next())
 	return nil
 }
 
@@ -187,44 +202,53 @@ type EphemSetup struct {
 	*reserver
 }
 
-func (s *EphemSetup) PrepareRequest() (common.Extension, error) {
+func (s *EphemSetup) PrepareRequest() (common.Extension, *sbreq.Pld, error) {
 	s.entry.Lock()
 	defer s.entry.Unlock()
 	steady := s.entry.syncResv.Load().Steady
 	if steady == nil {
-		return nil, common.NewBasicError("Steady extension not available", nil)
+		return nil, nil, common.NewBasicError("Steady extension not available", nil)
 	}
 	steady = steady.Copy().(*sbextn.Steady)
-
 	info := &sbresv.Info{
 		ExpTick:  sibra.CurrentTick() + sibra.MaxEphemTicks,
 		BwCls:    s.bwCls,
 		PathType: sibra.PathTypeEphemeral,
 		RttCls:   10, // FIXME(roosd): add RTT classes based on steady
 	}
-	ephemReq := sbreq.NewEphemReq(sbreq.REphmSetup, s.id, info, steady.TotalHops)
-	if err := steady.ToRequest(ephemReq); err != nil {
-		return nil, err
+	pld := &sbreq.Pld{
+		Type:      sbreq.REphmSetup,
+		NumHops:   uint8(steady.TotalHops),
+		TimeStamp: uint32(time.Now().Unix()),
+		Accepted:  true,
+		Auths:     make([]common.RawBytes, steady.TotalHops),
+		Data: &sbreq.EphemReq{
+			ID:    s.id,
+			Block: sbresv.NewBlock(info, steady.TotalHops),
+		},
 	}
-	return steady, nil
+	if err := steady.ToRequest(pld); err != nil {
+		return nil, nil, err
+	}
+	return steady, pld, nil
 }
 
 func (s *EphemSetup) NotifyKeys() []*notifyKey {
 	return []*notifyKey{{Id: s.id, Idx: s.idx, ReqType: sbreq.REphmSetup}}
 }
 
-func (s *EphemSetup) HandleRep(ext common.Extension) (bool, error) {
+func (s *EphemSetup) HandleRep(event notifyEvent) (bool, error) {
 	// TODO(roosd): sanity check -> correct ID, correct Idx, correct parameters ...
 	// correct response
-	if _, ok := ext.(*sbextn.Steady); !ok {
+	if _, ok := event.extn.(*sbextn.Steady); !ok {
 		return false, common.NewBasicError("Extension is not steady", nil)
 	}
-	steady := ext.(*sbextn.Steady)
+	steady := event.extn.(*sbextn.Steady)
 	s.entry.Lock()
 	defer s.entry.Unlock()
-	switch r := ext.(*sbextn.Steady).Request.(type) {
+	switch r := event.pld.Data.(type) {
 	case *sbreq.EphemReq:
-		ids := []sibra.ID{r.ReqID}
+		ids := []sibra.ID{r.ID}
 		ids = append(ids, steady.IDs...)
 		ephem, err := sbcreate.NewEphemUse(ids, steady.PathLens, r.Block, true)
 		if err != nil {
@@ -247,16 +271,16 @@ type EphemRenew struct {
 	*reserver
 }
 
-func (r *EphemRenew) PrepareRequest() (common.Extension, error) {
+func (r *EphemRenew) PrepareRequest() (common.Extension, *sbreq.Pld, error) {
 	r.entry.Lock()
 	defer r.entry.Unlock()
 	ephem := r.entry.syncResv.Load().Ephemeral
 	if ephem == nil {
-		return nil, common.NewBasicError("Ephemeral extension not available", nil)
+		return nil, nil, common.NewBasicError("Ephemeral extension not available", nil)
 	}
 	ephem = ephem.Copy().(*sbextn.Ephemeral)
 	if ephem.ActiveBlocks[0].Info.Index.Add(1) != r.idx {
-		return nil, common.NewBasicError("Indexes out of sync", nil, "existing",
+		return nil, nil, common.NewBasicError("Indexes out of sync", nil, "existing",
 			ephem.ActiveBlocks[0].Info.Index, "next", r.idx)
 	}
 	r.id = ephem.IDs[0]
@@ -267,27 +291,36 @@ func (r *EphemRenew) PrepareRequest() (common.Extension, error) {
 		RttCls:   10, // FIXME(roosd): add RTT classes based on steady
 		Index:    r.idx,
 	}
-	ephemReq := sbreq.NewEphemReq(sbreq.REphmRenewal, nil, info, ephem.TotalHops)
-	if err := ephem.ToRequest(ephemReq); err != nil {
-		return nil, err
+	pld := &sbreq.Pld{
+		Type:      sbreq.REphmRenewal,
+		NumHops:   uint8(ephem.TotalHops),
+		TimeStamp: uint32(time.Now().Unix()),
+		Accepted:  true,
+		Auths:     make([]common.RawBytes, ephem.TotalHops),
+		Data: &sbreq.EphemReq{
+			Block: sbresv.NewBlock(info, ephem.TotalHops),
+		},
 	}
-	return ephem, nil
+	if err := ephem.ToRequest(pld); err != nil {
+		return nil, nil, err
+	}
+	return ephem, pld, nil
 }
 
 func (r *EphemRenew) NotifyKeys() []*notifyKey {
 	return []*notifyKey{{Id: r.id, Idx: r.idx, ReqType: sbreq.REphmRenewal}}
 }
 
-func (r *EphemRenew) HandleRep(ext common.Extension) (bool, error) {
+func (r *EphemRenew) HandleRep(event notifyEvent) (bool, error) {
 	// TODO(roosd): sanity check -> correct ID, correct Idx, correct parameters ...
 	// correct response
-	if _, ok := ext.(*sbextn.Ephemeral); !ok {
+	if _, ok := event.extn.(*sbextn.Ephemeral); !ok {
 		return false, common.NewBasicError("Extension is not ephemeral", nil)
 	}
-	ephem := ext.(*sbextn.Ephemeral)
+	ephem := event.extn.(*sbextn.Ephemeral)
 	r.entry.Lock()
 	defer r.entry.Unlock()
-	switch request := ext.(*sbextn.Ephemeral).Request.(type) {
+	switch request := event.pld.Data.(type) {
 	case *sbreq.EphemReq:
 		ephem, err := sbcreate.NewEphemUse(ephem.IDs, ephem.PathLens, request.Block, true)
 		if err != nil {
@@ -327,70 +360,74 @@ type EphemCleanSetup struct {
 	*cleaner
 }
 
-func (c *EphemCleanSetup) PrepareRequest() (common.Extension, error) {
+func (c *EphemCleanSetup) PrepareRequest() (common.Extension, *sbreq.Pld, error) {
 	c.entry.Lock()
 	defer c.entry.Unlock()
 	steady := c.entry.syncResv.Load().Steady
 	if steady == nil {
-		return nil, common.NewBasicError("Steady extension not available", nil)
+		return nil, nil, common.NewBasicError("Steady extension not available", nil)
 	}
 	steady = steady.Copy().(*sbextn.Steady)
-	r := sbreq.NewEphemClean(c.id, c.FailedInfo, steady.TotalHops)
-	if err := steady.ToRequest(r); err != nil {
-		return nil, err
+	pld := &sbreq.Pld{
+		Type:      sbreq.REphmCleanUp,
+		NumHops:   uint8(steady.TotalHops),
+		TimeStamp: uint32(time.Now().Unix()),
+		Accepted:  true,
+		Auths:     make([]common.RawBytes, steady.TotalHops),
+		Data: &sbreq.EphemClean{
+			Setup: true,
+			ID:    c.id,
+			Info:  c.FailedInfo,
+		},
 	}
-	return steady, nil
+	if err := steady.ToRequest(pld); err != nil {
+		return nil, nil, err
+	}
+	return steady, pld, nil
 }
 
-func (c *EphemCleanSetup) HandleRep(ext common.Extension) (bool, error) {
+func (c *EphemCleanSetup) HandleRep(event notifyEvent) (bool, error) {
 	// TODO(roosd): sanity check -> correct ID, correct Idx, correct parameters ...
 	// correct response
-	steady, ok := ext.(*sbextn.Steady)
-	if !ok {
-		return false, common.NewBasicError("Extension is not steady", nil)
+	if _, ok := event.pld.Data.(*sbreq.EphemClean); !ok {
+		return false, common.NewBasicError("Invalid response type", nil, "type", event.pld.Type)
 	}
-	// TODO(roosd): remove
-	c.Info("Got cleaner reply", "rep", steady.Request)
-	switch r := ext.(*sbextn.Steady).Request.(type) {
-	case *sbreq.EphemClean:
-		return r.Accepted, nil
-	default:
-		return false, common.NewBasicError("Invalid response type", nil, "type", r.GetBase().Type)
-	}
+	return event.pld.Accepted, nil
 }
 
 type EphemCleanRenew struct {
 	*cleaner
 }
 
-func (c *EphemCleanRenew) PrepareRequest() (common.Extension, error) {
+func (c *EphemCleanRenew) PrepareRequest() (common.Extension, *sbreq.Pld, error) {
 	c.entry.Lock()
 	defer c.entry.Unlock()
 	ephem := c.entry.syncResv.Load().Ephemeral
 	if ephem == nil {
-		return nil, common.NewBasicError("Ephemeral extension not available", nil)
+		return nil, nil, common.NewBasicError("Ephemeral extension not available", nil)
 	}
 	ephem = ephem.Copy().(*sbextn.Ephemeral)
-	r := sbreq.NewEphemClean(nil, c.FailedInfo, ephem.TotalHops)
-	if err := ephem.ToRequest(r); err != nil {
-		return nil, err
+	pld := &sbreq.Pld{
+		Type:      sbreq.REphmCleanUp,
+		NumHops:   uint8(ephem.TotalHops),
+		TimeStamp: uint32(time.Now().Unix()),
+		Accepted:  true,
+		Auths:     make([]common.RawBytes, ephem.TotalHops),
+		Data: &sbreq.EphemClean{
+			Info: c.FailedInfo,
+		},
 	}
-	return ephem, nil
+	if err := ephem.ToRequest(pld); err != nil {
+		return nil, nil, err
+	}
+	return ephem, pld, nil
 }
 
-func (c *EphemCleanRenew) HandleRep(ext common.Extension) (bool, error) {
+func (c *EphemCleanRenew) HandleRep(event notifyEvent) (bool, error) {
 	// TODO(roosd): sanity check -> correct ID, correct Idx, correct parameters ...
 	// correct response
-	ephem, ok := ext.(*sbextn.Ephemeral)
-	if !ok {
-		return false, common.NewBasicError("Extension is not ephemeral", nil)
+	if _, ok := event.pld.Data.(*sbreq.EphemClean); !ok {
+		return false, common.NewBasicError("Invalid response type", nil, "type", event.pld.Type)
 	}
-	// TODO(roosd): remove
-	c.Info("Got cleaner reply", "rep", ephem.Request)
-	switch r := ext.(*sbextn.Steady).Request.(type) {
-	case *sbreq.EphemClean:
-		return r.Accepted, nil
-	default:
-		return false, common.NewBasicError("Invalid response type", nil, "type", r.GetBase().Type)
-	}
+	return event.pld.Accepted, nil
 }

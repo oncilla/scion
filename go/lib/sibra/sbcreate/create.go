@@ -40,9 +40,7 @@ func NewSteadySetup(r *sbreq.SteadyReq, id sibra.ID) (*sbextn.Steady, error) {
 			Version:      sibra.Version,
 			PathLens:     []uint8{pathLen, 0, 0},
 			IDs:          []sibra.ID{id},
-			ReqID:        id,
 			ActiveBlocks: make([]*sbresv.Block, 0),
-			Request:      r,
 		},
 	}
 	if !ext.Forward {
@@ -72,7 +70,6 @@ func NewSteadyUse(id sibra.ID, block *sbresv.Block, fwd bool) (*sbextn.Steady, e
 			Version:      sibra.Version,
 			PathLens:     []uint8{pathLen, 0, 0},
 			IDs:          []sibra.ID{id},
-			ReqID:        id,
 			ActiveBlocks: []*sbresv.Block{block.Copy()},
 		},
 	}
@@ -118,7 +115,6 @@ func NewEphemUse(ids []sibra.ID, pathLens []uint8, block *sbresv.Block,
 			Version:      sibra.Version,
 			PathLens:     []uint8{pathLens[0], pathLens[1], pathLens[2]},
 			IDs:          idsCopy,
-			ReqID:        idsCopy[0],
 			ActiveBlocks: []*sbresv.Block{block.Copy()},
 		},
 	}

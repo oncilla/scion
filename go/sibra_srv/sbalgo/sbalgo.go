@@ -44,10 +44,11 @@ func (i IFTuple) Reverse() IFTuple {
 }
 
 type AdmParams struct {
-	Ifids IFTuple
-	Extn  *sbextn.Steady
-	Req   *sbreq.SteadyReq
-	Src   addr.IA
+	Ifids    IFTuple
+	Extn     *sbextn.Steady
+	Req      *sbreq.SteadyReq
+	Src      addr.IA
+	Accepted bool
 }
 
 type CleanParams struct {
@@ -72,10 +73,10 @@ type SteadyAdm interface {
 }
 
 type EphemAdm interface {
-	AdmitEphemSetup(steady *sbextn.Steady) (EphemRes, error)
-	AdmitEphemRenew(ephem *sbextn.Ephemeral) (EphemRes, error)
-	CleanEphemSetup(steady *sbextn.Steady) error
-	CleanEphemRenew(ephem *sbextn.Ephemeral) error
+	AdmitEphemSetup(steady *sbextn.Steady, p *sbreq.Pld) (EphemRes, error)
+	AdmitEphemRenew(ephem *sbextn.Ephemeral, p *sbreq.Pld) (EphemRes, error)
+	CleanEphemSetup(steady *sbextn.Steady, p *sbreq.Pld) error
+	CleanEphemRenew(ephem *sbextn.Ephemeral, p *sbreq.Pld) error
 }
 
 type SteadyRes struct {

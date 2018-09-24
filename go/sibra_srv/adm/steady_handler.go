@@ -31,7 +31,7 @@ type SteadyHandler struct{}
 /////////////////////////////////////////
 
 func (h *SteadyHandler) HandleResvReqEndAS(pkt *conf.ExtPkt, r *sbreq.SteadyReq) error {
-	log.Debug("Handling steady request on end AS", "id", pkt.Steady.ReqID)
+	log.Debug("Handling steady request on end AS", "id", pkt.Steady.GetCurrID())
 	if err := h.sanityCheckReqEndAS(pkt, r); err != nil {
 		return err
 	}
@@ -41,7 +41,7 @@ func (h *SteadyHandler) HandleResvReqEndAS(pkt *conf.ExtPkt, r *sbreq.SteadyReq)
 	if err := h.reversePkt(pkt); err != nil {
 		return err
 	}
-	if pkt.Steady.Request.GetBase().Accepted {
+	if pkt.Pld.Accepted {
 		if err := PromoteToSOFCreated(pkt); err != nil {
 			return err
 		}
@@ -77,7 +77,7 @@ func (h *SteadyHandler) HandleIdxConfEndAS(pkt *conf.ExtPkt, r *sbreq.ConfirmInd
 ////////////////////////////////////
 
 func (h *SteadyHandler) HandleResvReqHopAS(pkt *conf.ExtPkt, r *sbreq.SteadyReq) error {
-	log.Debug("Handling steady request on hop AS", "id", pkt.Steady.ReqID)
+	log.Debug("Handling steady request on hop AS", "id", pkt.Steady.GetCurrID())
 	if err := AdmitSteadyResv(pkt, r); err != nil {
 		return err
 	}
@@ -85,8 +85,8 @@ func (h *SteadyHandler) HandleResvReqHopAS(pkt *conf.ExtPkt, r *sbreq.SteadyReq)
 }
 
 func (h *SteadyHandler) HandleResvRepHopAS(pkt *conf.ExtPkt) error {
-	log.Debug("Handling steady response on hop AS", "id", pkt.Steady.ReqID)
-	if pkt.Steady.Request.GetBase().Accepted {
+	log.Debug("Handling steady response on hop AS", "id", pkt.Steady.GetCurrID())
+	if pkt.Pld.Accepted {
 		if err := PromoteToSOFCreated(pkt); err != nil {
 			return err
 		}
@@ -110,27 +110,27 @@ func AdmitSteadyResv(pkt *conf.ExtPkt, r *sbreq.SteadyReq) error {
 	if err != nil {
 		return err
 	}
-	log.Debug("Admitting steady reservation", "id", pkt.Steady.ReqID, "ifids", ifids)
+	log.Debug("Admitting steady reservation", "id", pkt.Steady.GetCurrID(), "ifids", ifids)
 	params := sbalgo.AdmParams{
-		Ifids: ifids,
-		Extn:  pkt.Steady,
-		Req:   r,
-		Src:   pkt.Spkt.SrcIA,
+		Ifids:    ifids,
+		Extn:     pkt.Steady,
+		Req:      r,
+		Src:      pkt.Spkt.SrcIA,
+		Accepted: pkt.Pld.Accepted,
 	}
 	res, err := pkt.Conf.SibraAlgo.AdmitSteady(params)
 	if err != nil {
 		return err
 	}
-	if r.Accepted && !res.Accepted {
-		r.Accepted = false
+	if pkt.Pld.Accepted && !res.Accepted {
+		pkt.Pld.Accepted = false
 		r.Info.FailHop = pkt.Steady.SOFIndex
-		log.Info("Fail reservation", "id", pkt.Steady.ReqID)
+		log.Info("Fail reservation", "id", pkt.Steady.GetCurrID())
 	}
 	r.Info.BwCls = res.AllocBw
 	r.OfferFields[pkt.Steady.SOFIndex].AllocBw = res.AllocBw
-	r.OfferFields[pkt.Steady.SOFIndex].MinBw = res.MinBw
 	r.OfferFields[pkt.Steady.SOFIndex].MaxBw = res.MaxBw
-	r.Lines[pkt.Steady.SOFIndex] = sbresv.SOFieldLines
+	r.OfferFields[pkt.Steady.SOFIndex].LineLen = sbresv.SOFieldLines
 	return nil
 }
 
@@ -140,6 +140,9 @@ func (h *SteadyHandler) reversePkt(pkt *conf.ExtPkt) error {
 		return err
 	}
 	if err := pkt.Spkt.Reverse(); err != nil {
+		return err
+	}
+	if err := pkt.Pld.Reverse(); err != nil {
 		return err
 	}
 	pkt.Spkt.SrcHost = pkt.Conf.PublicAddr.Host
