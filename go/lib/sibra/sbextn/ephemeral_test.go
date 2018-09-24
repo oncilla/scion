@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/scionproto/scion/go/lib/addr"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	. "github.com/smartystreets/goconvey/convey"
@@ -31,8 +32,8 @@ func Test_EphemeralRenewal(t *testing.T) {
 				IsRequest: true,
 				Version:   Version,
 				PathLens:  []uint8{2, 3, 2},
-				IDs: []sbresv.ID{sbresv.NewEphemID(addr.AS(0), nil), sbresv.NewSteadyID(addr.AS(1), 0),
-					sbresv.NewSteadyID(addr.AS(2), 1), sbresv.NewSteadyID(addr.AS(3), 4)},
+				IDs: []sibra.ID{sibra.NewEphemID(addr.AS(0), nil), sibra.NewSteadyID(addr.AS(1), 0),
+					sibra.NewSteadyID(addr.AS(2), 1), sibra.NewSteadyID(addr.AS(3), 4)},
 				Request: &sbreq.EphemReq{
 					Base: &sbreq.Base{
 						Type:     sbreq.REphmRenewal,
@@ -157,8 +158,8 @@ func Test_EphemeralRenewal(t *testing.T) {
 				Version:   Version,
 				SOFIndex:  4,
 				PathLens:  []uint8{2, 3, 2},
-				IDs: []sbresv.ID{sbresv.NewEphemID(addr.AS(0), nil), sbresv.NewSteadyID(addr.AS(1), 0),
-					sbresv.NewSteadyID(addr.AS(2), 1), sbresv.NewSteadyID(addr.AS(3), 4)},
+				IDs: []sibra.ID{sibra.NewEphemID(addr.AS(0), nil), sibra.NewSteadyID(addr.AS(1), 0),
+					sibra.NewSteadyID(addr.AS(2), 1), sibra.NewSteadyID(addr.AS(3), 4)},
 				Request: &sbreq.EphemReq{
 					Base: &sbreq.Base{
 						Type:     sbreq.REphmRenewal,

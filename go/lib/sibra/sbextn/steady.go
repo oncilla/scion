@@ -19,8 +19,8 @@ import (
 
 	"github.com/scionproto/scion/go/lib/assert"
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
 var _ common.Extension = (*Steady)(nil)
@@ -44,7 +44,7 @@ func SteadyFromBase(base *Base, raw common.RawBytes) (*Steady, error) {
 	s := &Steady{Base: base}
 	off, end := 0, common.ExtnFirstLineLen
 	for i := 0; i < s.TotalSteady; i++ {
-		off, end = end, end+sbresv.SteadyIDLen
+		off, end = end, end+sibra.SteadyIDLen
 		s.ParseID(raw[off:end])
 	}
 	off = end + padding(end+common.ExtnSubHdrLen)
@@ -96,7 +96,7 @@ func (s *Steady) ValidatePath() error {
 		return common.NewBasicError("Invalid number of active blocks", nil,
 			"num", len(s.ActiveBlocks))
 	}
-	prevPT := sbresv.PathTypeNone
+	prevPT := sibra.PathTypeNone
 	for i, v := range s.ActiveBlocks {
 		if !v.Info.PathType.ValidAfter(prevPT) {
 			return common.NewBasicError("Incompatible path types", nil, "blockIdx", i,

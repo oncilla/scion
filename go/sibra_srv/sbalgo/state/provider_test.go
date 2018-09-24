@@ -22,19 +22,19 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 func Test_BWProvider(t *testing.T) {
 	Convey("Reservation is kept correctly", t, func() {
 		Convey("Add and remove expiring", func() {
-			currTick := sbresv.CurrentTick()
+			currTick := sibra.CurrentTick()
 			b := &BWProvider{
 				Total:    100,
 				Reserved: 0,
 				deallocRing: deallocRing{
 					currTick: currTick,
-					freeRing: make([]uint64, sbresv.MaxEphemTicks*2),
+					freeRing: make([]uint64, sibra.MaxEphemTicks*2),
 				},
 			}
 			allocated, ok, err := b.AllocExpiring(50, currTick.Add(1))
@@ -56,7 +56,7 @@ func Test_BWProvider(t *testing.T) {
 			SoMsg("err", err, ShouldBeNil)
 			SoMsg("free", b.Free(), ShouldEqual, 50)
 
-			//time.Sleep(sbresv.TickDuration)
+			//time.Sleep(sibra.TickDuration)
 			//SoMsg("free", b.Free(), ShouldEqual, 100)
 
 		})
@@ -67,10 +67,10 @@ func Test_deallocRing(t *testing.T) {
 	Convey("Dealloc keeps track of bandwidth", t, func() {
 		Convey("Only add", func() {
 
-			currTick := sbresv.CurrentTick()
+			currTick := sibra.CurrentTick()
 			ring := &deallocRing{
 				currTick: currTick,
-				freeRing: make([]uint64, sbresv.MaxEphemTicks*2),
+				freeRing: make([]uint64, sibra.MaxEphemTicks*2),
 			}
 
 			resvMap := map[int]uint64{
@@ -94,10 +94,10 @@ func Test_deallocRing(t *testing.T) {
 
 		Convey("Add and unreserve", func() {
 
-			currTick := sbresv.CurrentTick()
+			currTick := sibra.CurrentTick()
 			ring := &deallocRing{
 				currTick: currTick,
-				freeRing: make([]uint64, sbresv.MaxEphemTicks*2),
+				freeRing: make([]uint64, sibra.MaxEphemTicks*2),
 			}
 
 			resvMap := map[int]uint64{
@@ -126,10 +126,10 @@ func Test_deallocRing(t *testing.T) {
 
 		Convey("Add and unreserve with tick increase", func() {
 
-			currTick := sbresv.CurrentTick()
+			currTick := sibra.CurrentTick()
 			ring := &deallocRing{
 				currTick: currTick,
-				freeRing: make([]uint64, sbresv.MaxEphemTicks*2),
+				freeRing: make([]uint64, sibra.MaxEphemTicks*2),
 			}
 
 			resvMap := map[int]uint64{
@@ -161,7 +161,7 @@ func Test_tickOffset(t *testing.T) {
 	Convey("Tick offset is correct", t, func() {
 		//	Convey("Only add", func() {
 
-		currTick := sbresv.CurrentTick()
+		currTick := sibra.CurrentTick()
 		ring := &deallocRing{
 			currTick: currTick,
 			freeRing: make([]uint64, 10),
@@ -177,21 +177,21 @@ func Test_tickOffset(t *testing.T) {
 	})
 }
 
-func resvF(ring *deallocRing, currTick sbresv.Tick, resvMap map[int]uint64) {
+func resvF(ring *deallocRing, currTick sibra.Tick, resvMap map[int]uint64) {
 	for _, tickOff := range sortedKeys(resvMap) {
 		err := ring.reserve(currTick.Add(tickOff), resvMap[tickOff])
 		SoMsg(fmt.Sprintf("Err off %d", tickOff), err, ShouldBeNil)
 	}
 }
 
-func unresvF(ring *deallocRing, currTick sbresv.Tick, unresvMap map[int]uint64) {
+func unresvF(ring *deallocRing, currTick sibra.Tick, unresvMap map[int]uint64) {
 	for _, tickOff := range sortedKeys(unresvMap) {
 		err := ring.unreserve(currTick.Add(tickOff), unresvMap[tickOff])
 		SoMsg(fmt.Sprintf("Err off %d", tickOff), err, ShouldBeNil)
 	}
 }
 
-func checkF(ring *deallocRing, currTick sbresv.Tick, checkMap map[int]uint64) {
+func checkF(ring *deallocRing, currTick sibra.Tick, checkMap map[int]uint64) {
 	for _, tickOff := range sortedKeys(checkMap) {
 		dealloc := ring.cleanUp(currTick.Add(tickOff))
 		SoMsg("Tick "+strconv.Itoa(tickOff), dealloc, ShouldEqual, checkMap[tickOff])

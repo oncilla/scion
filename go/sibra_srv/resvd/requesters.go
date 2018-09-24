@@ -25,6 +25,7 @@ import (
 	"github.com/scionproto/scion/go/lib/l4"
 	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/sibra"
+	"github.com/scionproto/scion/go/lib/sibra/sbcreate"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/sock/reliable"
@@ -61,7 +62,7 @@ type Reqstr struct {
 	timeFunc func(ReqstrI)
 	succFunc func(ReqstrI)
 
-	id      sbresv.ID
+	id      sibra.ID
 	resvKey string
 	stop    chan struct{}
 	path    *spathmeta.AppPath
@@ -69,7 +70,7 @@ type Reqstr struct {
 	dstHost addr.HostAddr
 	block   *sbresv.Block
 	timeout time.Duration
-	idx     sbresv.Index
+	idx     sibra.Index
 }
 
 func (r *Reqstr) Run(i ReqstrI) {
@@ -156,7 +157,7 @@ func (r *Reqstr) CreateExtPkt() (*conf.ExtPkt, error) {
 	pkt := &conf.ExtPkt{
 		Conf: conf.Get(),
 	}
-	pkt.Steady, err = sibra.NewSteadyUse(r.id, r.block, !r.block.Info.PathType.Reversed())
+	pkt.Steady, err = sbcreate.NewSteadyUse(r.id, r.block, !r.block.Info.PathType.Reversed())
 	if err != nil {
 		return nil, err
 	}
@@ -182,8 +183,8 @@ func (r *Reqstr) OnTimeout() {
 
 type ResvReqstr struct {
 	*Reqstr
-	min sbresv.BwCls
-	max sbresv.BwCls
+	min sibra.BwCls
+	max sibra.BwCls
 }
 
 func (r *ResvReqstr) handleRep(pkt *conf.ExtPkt) error {
@@ -200,7 +201,7 @@ func (r *ResvReqstr) handleRep(pkt *conf.ExtPkt) error {
 	r.Debug("Reservation has been accepted", "info", block.Info)
 	e := &conf.LocalResvEntry{
 		Id:       r.id.Copy(),
-		State:    sbresv.StateTemp,
+		State:    sibra.StateTemp,
 		Block:    block,
 		Creation: time.Now(),
 	}
@@ -234,12 +235,12 @@ func (r *ResvReqstr) validate(pkt *conf.ExtPkt) error {
 type SteadySetup struct {
 	*ResvReqstr
 	path *spathmeta.AppPath
-	pt   sbresv.PathType
+	pt   sibra.PathType
 }
 
-func (s *SteadySetup) probeRtt() (sbresv.RttCls, error) {
+func (s *SteadySetup) probeRtt() (sibra.RttCls, error) {
 	// FIXME(roosd): calculate RttCls
-	s.timeout = sbresv.RttCls(10).Duration()
+	s.timeout = sibra.RttCls(10).Duration()
 	return 10, nil
 }
 
@@ -254,13 +255,13 @@ func (s *SteadySetup) CreateExtPkt() (*conf.ExtPkt, error) {
 		return nil, common.NewBasicError("Unable to probe rtt class", err)
 	}
 	info := &sbresv.Info{
-		ExpTick:  sbresv.CurrentTick() + sbresv.MaxSteadyTicks,
+		ExpTick:  sibra.CurrentTick() + sibra.MaxSteadyTicks,
 		BwCls:    s.max,
 		RttCls:   rtt,
 		PathType: s.pt,
 		Index:    s.idx,
 	}
-	pkt.Steady, err = sibra.NewSteadySetup(sbreq.NewSteadyReq(
+	pkt.Steady, err = sbcreate.NewSteadySetup(sbreq.NewSteadyReq(
 		sbreq.RSteadySetup, info, s.min, s.max, pLen), s.id)
 	if err != nil {
 		return nil, err
@@ -307,7 +308,7 @@ func (s *SteadySetup) HandleRep(pkt *conf.ExtPkt) error {
 	block := pkt.Steady.Request.(*sbreq.SteadySucc).Block
 	c := &ConfirmIndex{
 		Reqstr: &Reqstr{
-			Logger:  s.Logger.New("sub", "ConfirmIndex", "state", sbresv.StatePending),
+			Logger:  s.Logger.New("sub", "ConfirmIndex", "state", sibra.StatePending),
 			id:      s.id,
 			idx:     s.idx,
 			resvKey: s.resvKey,
@@ -318,7 +319,7 @@ func (s *SteadySetup) HandleRep(pkt *conf.ExtPkt) error {
 			block:   block,
 			timeout: block.Info.RttCls.Duration(),
 		},
-		state: sbresv.StatePending,
+		state: sibra.StatePending,
 	}
 	go c.Run(c)
 	return nil
@@ -330,7 +331,7 @@ type SteadyRenew struct {
 
 func (s *SteadyRenew) PrepareReq(pkt *conf.ExtPkt) error {
 	info := &sbresv.Info{
-		ExpTick:  sbresv.CurrentTick() + sbresv.MaxSteadyTicks,
+		ExpTick:  sibra.CurrentTick() + sibra.MaxSteadyTicks,
 		BwCls:    s.max,
 		RttCls:   s.block.Info.RttCls,
 		PathType: s.block.Info.PathType,
@@ -361,7 +362,7 @@ func (s *SteadyRenew) HandleRep(pkt *conf.ExtPkt) error {
 	}
 	c := &ConfirmIndex{
 		Reqstr: &Reqstr{
-			Logger:  s.Logger.New("sub", "ConfirmIndex", "state", sbresv.StatePending),
+			Logger:  s.Logger.New("sub", "ConfirmIndex", "state", sibra.StatePending),
 			id:      s.id,
 			idx:     s.idx,
 			resvKey: s.resvKey,
@@ -372,7 +373,7 @@ func (s *SteadyRenew) HandleRep(pkt *conf.ExtPkt) error {
 			block:   s.block,
 			timeout: s.block.Info.RttCls.Duration(),
 		},
-		state: sbresv.StatePending,
+		state: sibra.StatePending,
 	}
 	go c.Run(c)
 	return nil
@@ -380,7 +381,7 @@ func (s *SteadyRenew) HandleRep(pkt *conf.ExtPkt) error {
 
 type ConfirmIndex struct {
 	*Reqstr
-	state sbresv.State
+	state sibra.State
 }
 
 func (c *ConfirmIndex) PrepareReq(pkt *conf.ExtPkt) error {

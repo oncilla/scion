@@ -18,11 +18,11 @@ import (
 	"hash"
 
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/sibra_srv/conf"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 	"github.com/scionproto/scion/go/sibra_srv/util"
 )
 
@@ -44,7 +44,7 @@ func PromoteToSOFCreated(pkt *conf.ExtPkt) error {
 
 }
 
-func issueSOF(base *sbextn.Base, ifids sibra.IFTuple, conf *conf.Conf) error {
+func issueSOF(base *sbextn.Base, ifids sbalgo.IFTuple, conf *conf.Conf) error {
 	mac := conf.SOFMacPool.Get().(hash.Hash)
 	err := base.SetSOF(mac, ifids.InIfid, ifids.EgIfid)
 	conf.SOFMacPool.Put(mac)
@@ -54,9 +54,9 @@ func issueSOF(base *sbextn.Base, ifids sibra.IFTuple, conf *conf.Conf) error {
 func Promote(pkt *conf.ExtPkt, r *sbreq.ConfirmIndex) error {
 	// FIXME(roosd): Improve error handling. Notify reservation initiator why promotion failed
 	switch r.State {
-	case sbresv.StatePending:
+	case sibra.StatePending:
 		return PromoteToPending(pkt, r)
-	case sbresv.StateActive:
+	case sibra.StateActive:
 		return PromoteToActive(pkt, r)
 	default:
 		return common.NewBasicError("Invalid state", nil, "state", r.State)

@@ -19,8 +19,8 @@ import (
 
 	"github.com/scionproto/scion/go/lib/assert"
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
 const InvalidEphemIdLen = "Invalid ephemeral reservation id length"
@@ -42,10 +42,10 @@ func EphemeralFromRaw(raw common.RawBytes) (*Ephemeral, error) {
 
 func EphemeralFromBase(base *Base, raw common.RawBytes) (*Ephemeral, error) {
 	e := &Ephemeral{base}
-	off, end := common.ExtnFirstLineLen, common.ExtnFirstLineLen+sbresv.EphemIDLen
+	off, end := common.ExtnFirstLineLen, common.ExtnFirstLineLen+sibra.EphemIDLen
 	e.ParseID(raw[off:end])
 	for i := 0; i < e.TotalSteady; i++ {
-		off, end = end, end+sbresv.SteadyIDLen
+		off, end = end, end+sibra.SteadyIDLen
 		e.ParseID(raw[off:end])
 	}
 	off = end + padding(end+common.ExtnSubHdrLen)
@@ -70,7 +70,7 @@ func EphemeralFromBase(base *Base, raw common.RawBytes) (*Ephemeral, error) {
 }
 
 // SteadyIds returns the steady reservation ids in the reservation direction.
-func (e *Ephemeral) SteadyIds() []sbresv.ID {
+func (e *Ephemeral) SteadyIds() []sibra.ID {
 	return e.IDs[1:]
 }
 

@@ -12,24 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sbalgo
+package impl
 
 import (
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 	"github.com/scionproto/scion/go/sibra_srv/sbalgo/state"
 )
 
-var _ sibra.EphemAdm = (*AlgoSlow)(nil)
+var _ sbalgo.EphemAdm = (*algoBase)(nil)
 
 // AlgoSlow implements the SIBRA algorithm.
 type algoBase struct {
 	*ephemAdm
 }
 
-func (s *algoBase) prevBw(p sibra.AdmParams) sbresv.BwCls {
+func (s *algoBase) prevBw(p sbalgo.AdmParams) sibra.BwCls {
 	minMax := p.Req.MaxBw
 	// Take minimum of all previously max offers.
 	if p.Req.Info.PathType.Reversed() {
@@ -50,7 +51,9 @@ func (s *algoBase) prevBw(p sibra.AdmParams) sbresv.BwCls {
 	return minMax
 }
 
-func (s *algoBase) PromoteToSOFCreated(ifids sibra.IFTuple, id sbresv.ID, info *sbresv.Info) error {
+func (s *algoBase) PromoteToSOFCreated(ifids sbalgo.IFTuple, id sibra.ID,
+	info *sbresv.Info) error {
+
 	s.Lock()
 	defer s.Unlock()
 	stEntry, ok := s.SteadyMap.Get(id)
@@ -68,7 +71,7 @@ func (s *algoBase) PromoteToSOFCreated(ifids sibra.IFTuple, id sbresv.ID, info *
 	return nil
 }
 
-func (s *algoBase) PromoteToPending(ifs sibra.IFTuple, id sbresv.ID, c *sbreq.ConfirmIndex) error {
+func (s *algoBase) PromoteToPending(ifs sbalgo.IFTuple, id sibra.ID, c *sbreq.ConfirmIndex) error {
 	s.Lock()
 	defer s.Unlock()
 	stEntry, ok := s.SteadyMap.Get(id)
@@ -84,7 +87,7 @@ func (s *algoBase) PromoteToPending(ifs sibra.IFTuple, id sbresv.ID, c *sbreq.Co
 	s.TempTable.Delete(id, c.Idx)
 	return nil
 }
-func (s *algoBase) PromoteToActive(ifids sibra.IFTuple, id sbresv.ID, info *sbresv.Info,
+func (s *algoBase) PromoteToActive(ifids sbalgo.IFTuple, id sibra.ID, info *sbresv.Info,
 	c *sbreq.ConfirmIndex) error {
 
 	s.Lock()
@@ -102,7 +105,7 @@ func (s *algoBase) PromoteToActive(ifids sibra.IFTuple, id sbresv.ID, info *sbre
 	return nil
 }
 
-func (s *algoBase) validateIfids(ifids sibra.IFTuple, entry *state.SteadyResvEntry) error {
+func (s *algoBase) validateIfids(ifids sbalgo.IFTuple, entry *state.SteadyResvEntry) error {
 	// Validate that the packet traverses the correct interfaces
 	if ifids.InIfid != entry.Ifids.InIfid || ifids.EgIfid != entry.Ifids.EgIfid {
 		return common.NewBasicError("Invalid interfaces", nil,
@@ -112,7 +115,7 @@ func (s *algoBase) validateIfids(ifids sibra.IFTuple, entry *state.SteadyResvEnt
 	return nil
 }
 
-func minBps(a, b sbresv.Bps) sbresv.Bps {
+func minBps(a, b sibra.Bps) sibra.Bps {
 	if a > b {
 		return b
 	}

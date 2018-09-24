@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
@@ -46,7 +47,7 @@ var _ Request = (*EphemClean)(nil)
 type EphemClean struct {
 	*Base
 	// ReqID is the requested ephemeral id in failed setup requests.
-	ReqID sbresv.ID
+	ReqID sibra.ID
 	// Info is the reservation info of the failed request.
 	Info *sbresv.Info
 	// numHops keeps track of how many hops there are.
@@ -79,7 +80,7 @@ func EphemCleanFromBase(b *Base, raw common.RawBytes, numHops int) (*EphemClean,
 		Setup:   (raw[offFlags] & flagSetup) != 0,
 	}
 	if c.Setup {
-		l += sbresv.EphemIDLen
+		l += sibra.EphemIDLen
 	}
 	if len(raw) != l {
 		return nil, common.NewBasicError("Invalid ephemeral reservation reply length", nil,
@@ -87,8 +88,8 @@ func EphemCleanFromBase(b *Base, raw common.RawBytes, numHops int) (*EphemClean,
 	}
 	off := common.LineLen
 	if c.Setup {
-		c.ReqID = sbresv.ID(raw[off : off+sbresv.EphemIDLen])
-		off += sbresv.EphemIDLen
+		c.ReqID = sibra.ID(raw[off : off+sibra.EphemIDLen])
+		off += sibra.EphemIDLen
 	}
 	c.Info = sbresv.NewInfoFromRaw(raw[off : off+sbresv.InfoLen])
 	return c, nil
@@ -97,7 +98,7 @@ func EphemCleanFromBase(b *Base, raw common.RawBytes, numHops int) (*EphemClean,
 // NewEphemClean creates a new request to clean up a failed reservation.
 // To clean up a failed setup, a reservation id has to be provided. To clean up a failed
 // ephemeral reservation, id must be nil.
-func NewEphemClean(id sbresv.ID, info *sbresv.Info, numhops int) *EphemClean {
+func NewEphemClean(id sibra.ID, info *sbresv.Info, numhops int) *EphemClean {
 	c := &EphemClean{
 		Base: &Base{
 			Type:     REphmCleanUp,
@@ -111,7 +112,7 @@ func NewEphemClean(id sbresv.ID, info *sbresv.Info, numhops int) *EphemClean {
 	return c
 }
 
-func (c *EphemClean) EphemID() sbresv.ID {
+func (c *EphemClean) EphemID() sibra.ID {
 	return c.ReqID
 }
 
@@ -125,7 +126,7 @@ func (c *EphemClean) NumHops() int {
 
 func (c *EphemClean) Len() int {
 	if c.Setup {
-		return common.LineLen + sbresv.InfoLen + sbresv.EphemIDLen
+		return common.LineLen + sbresv.InfoLen + sibra.EphemIDLen
 	}
 	return common.LineLen + sbresv.InfoLen
 }
@@ -141,7 +142,7 @@ func (c *EphemClean) Write(b common.RawBytes) error {
 	b[offFlags] = c.packFlags()
 	off, end := 0, common.LineLen
 	if c.Setup {
-		off, end = end, end+sbresv.EphemIDLen
+		off, end = end, end+sibra.EphemIDLen
 		c.ReqID.Write(b[off:end])
 	}
 	off, end = end, end+c.Info.Len()

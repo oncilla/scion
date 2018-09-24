@@ -16,8 +16,8 @@ package conn
 
 import (
 	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/resvdb/query"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
 type Conn interface {
@@ -25,7 +25,7 @@ type Conn interface {
 	Insert(*sibra_mgmt.BlockMeta) (int, error)
 	// Deletes a reservation with a given ID. Returns the number of deleted
 	// reservations (0 or 1).
-	Delete(sbresv.ID) (int, error)
+	Delete(sibra.ID) (int, error)
 	// Deletes all reservations that contain a given interface. Returns the number
 	// of reservation deleted.
 	DeleteWithIntf(query.IntfSpec) (int, error)

@@ -19,11 +19,12 @@ import (
 	"time"
 
 	"github.com/patrickmn/go-cache"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
 const (
-	LocalResvExpiry = sbresv.MaxSteadyTicks * sbresv.TickDuration
+	LocalResvExpiry = sibra.MaxSteadyTicks * sibra.TickDuration
 	LocalGCInterval = LocalResvExpiry
 )
 
@@ -36,7 +37,7 @@ func NewLocalResvs() *LocalResvs {
 	return &LocalResvs{cache: c}
 }
 
-func (m *LocalResvs) Get(id sbresv.ID, idx sbresv.Index) *LocalResvEntry {
+func (m *LocalResvs) Get(id sibra.ID, idx sibra.Index) *LocalResvEntry {
 	entry, ok := m.cache.Get(m.toKey(id, idx))
 	if !ok {
 		return nil
@@ -44,9 +45,9 @@ func (m *LocalResvs) Get(id sbresv.ID, idx sbresv.Index) *LocalResvEntry {
 	return entry.(*LocalResvEntry)
 }
 
-func (m *LocalResvs) GetAll(id sbresv.ID) []*LocalResvEntry {
+func (m *LocalResvs) GetAll(id sibra.ID) []*LocalResvEntry {
 	res := make([]*LocalResvEntry, 0)
-	for idx := sbresv.Index(0); idx < sbresv.NumIndexes; idx++ {
+	for idx := sibra.Index(0); idx < sibra.NumIndexes; idx++ {
 		e := m.Get(id, idx)
 		if e != nil {
 			res = append(res, e)
@@ -55,11 +56,11 @@ func (m *LocalResvs) GetAll(id sbresv.ID) []*LocalResvEntry {
 	return res
 }
 
-func (m *LocalResvs) Set(id sbresv.ID, idx sbresv.Index, e *LocalResvEntry, exp time.Duration) {
+func (m *LocalResvs) Set(id sibra.ID, idx sibra.Index, e *LocalResvEntry, exp time.Duration) {
 	m.cache.Set(m.toKey(id, idx), e, exp)
 }
 
-func (m *LocalResvs) Delete(id sbresv.ID, idx sbresv.Index) {
+func (m *LocalResvs) Delete(id sibra.ID, idx sibra.Index) {
 	m.cache.Delete(m.toKey(id, idx))
 }
 
@@ -67,13 +68,13 @@ func (m *LocalResvs) Items() map[string]cache.Item {
 	return m.cache.Items()
 }
 
-func (m *LocalResvs) toKey(id sbresv.ID, idx sbresv.Index) string {
+func (m *LocalResvs) toKey(id sibra.ID, idx sibra.Index) string {
 	return fmt.Sprintf("id: %s idx: %d", id, idx)
 }
 
 type LocalResvEntry struct {
-	Id       sbresv.ID
-	State    sbresv.State
+	Id       sibra.ID
+	State    sibra.State
 	Block    *sbresv.Block
 	Creation time.Time
 }

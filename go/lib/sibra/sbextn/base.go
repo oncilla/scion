@@ -22,15 +22,12 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
 const (
-	// Version is the SIBRA Version number.
-	// It is a 2-bit value to be used as (SCION ver, SIBRA ver).
-	Version byte = 0
-
 	InvalidExtnLength  = "Invalid extension length"
 	InvalidSetupFlag   = "Setup must be steady and request"
 	UnsupportedVersion = "Unsupported SIBRA version"
@@ -76,7 +73,7 @@ const (
 // - version (2 LSB)
 type Base struct {
 	// ReqID is set to the reservation id associated with the request, if any.
-	ReqID sbresv.ID
+	ReqID sibra.ID
 	// CurrHop is the current hop on the path. Transfer ASes count as one hop.
 	CurrHop int
 	// TotalHops is the number of traversed ASes. Transfer ASes count as one hop.
@@ -100,7 +97,7 @@ type Base struct {
 	// Steady setup and renewal requests contain only one id. Ephemeral setup
 	// requests contain the steady reservation ids of the active reservation blocks.
 	// Ephemeral extensions contain the ephemeral id plus the steady reservation ids.
-	IDs []sbresv.ID
+	IDs []sibra.ID
 	// ActiveBlocks holds up to 3 active reservations blocks.
 	// In case of an ephemeral extension, exactly one active block must be present.
 	ActiveBlocks []*sbresv.Block
@@ -143,7 +140,7 @@ func BaseFromRaw(raw common.RawBytes) (*Base, error) {
 	if err := b.checkMinLen(raw); err != nil {
 		return nil, err
 	}
-	b.IDs = make([]sbresv.ID, 0, 4)
+	b.IDs = make([]sibra.ID, 0, 4)
 	b.ActiveBlocks = make([]*sbresv.Block, 0, 3)
 	return b, nil
 }
@@ -156,8 +153,8 @@ func (e *Base) parseFlags(flags byte) error {
 	e.BestEffort = (flags & flagBestEffort) != 0
 	e.IsRequest = (flags & flagRequest) != 0
 	e.Version = flags & flagVersion
-	if e.Version != Version {
-		return common.NewBasicError(UnsupportedVersion, nil, "expected", Version,
+	if e.Version != sibra.Version {
+		return common.NewBasicError(UnsupportedVersion, nil, "expected", sibra.Version,
 			"actual", e.Version)
 	}
 	if e.Setup && (!e.Steady || !e.IsRequest) {
@@ -186,9 +183,9 @@ func (e *Base) parsePathLens(raw common.RawBytes) error {
 func (e *Base) checkMinLen(raw common.RawBytes) error {
 	l := common.ExtnFirstLineLen
 	if !e.Steady {
-		l += sbresv.EphemIDLen
+		l += sibra.EphemIDLen
 	}
-	l += sbresv.SteadyIDLen * e.TotalSteady
+	l += sibra.SteadyIDLen * e.TotalSteady
 	l += padding(l + common.ExtnSubHdrLen)
 	if !e.Setup && e.Steady {
 		l += sbresv.InfoLen * e.TotalSteady
@@ -206,7 +203,7 @@ func (e *Base) checkMinLen(raw common.RawBytes) error {
 
 // ParseID casts a reservation id from raw and appends it to the IDs slice.
 func (e *Base) ParseID(raw common.RawBytes) {
-	e.IDs = append(e.IDs, sbresv.ID(raw))
+	e.IDs = append(e.IDs, sibra.ID(raw))
 }
 
 // parseActiveBlock parses an active reservation block and appends it to the
@@ -286,7 +283,7 @@ func (e *Base) GetCurrBlock() *sbresv.Block {
 
 func (e *Base) VerifySOF(mac hash.Hash, now time.Time) error {
 	pLens := []uint8{e.PathLens[e.CurrSteady]}
-	ids := []sbresv.ID{e.IDs[e.CurrSteady]}
+	ids := []sibra.ID{e.IDs[e.CurrSteady]}
 	if !e.Steady {
 		pLens = e.PathLens
 		ids = e.IDs
@@ -307,7 +304,7 @@ func (e *Base) SetSOF(mac hash.Hash, inIFID, egIFID common.IFIDType) error {
 		sof.Egress = egIFID
 		ids := e.IDs
 		if r.ReqID != nil {
-			ids = append([]sbresv.ID(nil), r.ReqID)
+			ids = append([]sibra.ID(nil), r.ReqID)
 			ids = append(ids, e.IDs...)
 		}
 		return r.Block.SetMac(mac, int(e.CurrHop), ids, e.PathLens)
@@ -454,7 +451,7 @@ func (e *Base) Write(b common.RawBytes) error {
 }
 
 func (e *Base) packFlags() byte {
-	flags := Version & flagVersion
+	flags := sibra.Version & flagVersion
 	if e.Steady {
 		flags |= flagSteady
 	}

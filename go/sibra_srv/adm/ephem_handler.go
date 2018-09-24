@@ -28,10 +28,9 @@ import (
 	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/sibra_srv/conf"
-	sbalgo "github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 	"github.com/scionproto/scion/go/sibra_srv/util"
 )
 
@@ -73,7 +72,7 @@ func (h *EphemHandler) HandleSetupResvReqEndAS(pkt *conf.ExtPkt) error {
 }
 
 func (h *EphemHandler) getTimeout(pkt *conf.ExtPkt) time.Duration {
-	var rttCls sbresv.RttCls
+	var rttCls sibra.RttCls
 	var numHops int
 	if pkt.Steady != nil {
 		rttCls = pkt.Steady.GetCurrBlock().Info.RttCls

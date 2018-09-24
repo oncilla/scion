@@ -18,11 +18,11 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 type Request interface {
-	EphemID() sbresv.ID
+	EphemID() sibra.ID
 	Steady() bool
 	GetBase() *Base
 	NumHops() int

@@ -19,10 +19,10 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/inconshreveable/log15"
 	"github.com/patrickmn/go-cache"
 
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/log"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 const (
@@ -40,7 +40,7 @@ func NewTempTable() *TempTable {
 	return &TempTable{cache: c}
 }
 
-func (m *TempTable) Get(id sbresv.ID, idx sbresv.Index) *TempTableEntry {
+func (m *TempTable) Get(id sibra.ID, idx sibra.Index) *TempTableEntry {
 	entry, ok := m.cache.Get(m.toKey(id, idx))
 	if !ok {
 		return nil
@@ -48,11 +48,11 @@ func (m *TempTable) Get(id sbresv.ID, idx sbresv.Index) *TempTableEntry {
 	return entry.(*TempTableEntry)
 }
 
-func (m *TempTable) Set(id sbresv.ID, idx sbresv.Index, e *TempTableEntry, exp time.Duration) {
+func (m *TempTable) Set(id sibra.ID, idx sibra.Index, e *TempTableEntry, exp time.Duration) {
 	m.cache.Set(m.toKey(id, idx), e, exp)
 }
 
-func (m *TempTable) Delete(id sbresv.ID, idx sbresv.Index) {
+func (m *TempTable) Delete(id sibra.ID, idx sibra.Index) {
 	// XXX(roosd): this is racy. However, SteadyResvEntry is protected
 	// against deletion if the state is not temporary
 	entry, ok := m.cache.Get(m.toKey(id, idx))
@@ -66,7 +66,7 @@ func (m *TempTable) Delete(id sbresv.ID, idx sbresv.Index) {
 	m.cache.Delete(m.toKey(id, idx))
 }
 
-func (m *TempTable) toKey(id sbresv.ID, idx sbresv.Index) string {
+func (m *TempTable) toKey(id sibra.ID, idx sibra.Index) string {
 	return fmt.Sprintf("id: %s idx: %d", id, idx)
 }
 
@@ -88,6 +88,6 @@ func tempOnEvict(key string, value interface{}) {
 type TempTableEntry struct {
 	sync.RWMutex
 	ResvMapEntry *SteadyResvEntry
-	Idx          sbresv.Index
+	Idx          sibra.Index
 	deleted      bool
 }

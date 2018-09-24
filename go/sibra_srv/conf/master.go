@@ -18,9 +18,9 @@ import (
 	"strconv"
 
 	"github.com/scionproto/scion/go/lib/infra"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/spkt"
 )
@@ -35,8 +35,8 @@ type ExtPkt struct {
 }
 
 type NotifyKey struct {
-	Id      sbresv.ID
-	Idx     sbresv.Index
+	Id      sibra.ID
+	Idx     sibra.Index
 	ReqType sbreq.RequestType
 }
 

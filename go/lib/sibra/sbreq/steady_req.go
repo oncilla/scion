@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
@@ -51,9 +52,9 @@ type SteadyReq struct {
 	// Lines is a list of line lengths for the SOFields.
 	Lines []byte
 	// MinBw is the minimum bandwidth class requested by the reservation initiator.
-	MinBw sbresv.BwCls
+	MinBw sibra.BwCls
 	// MaxBw is the maximum bandwidth class requested by the reservation initiator.
-	MaxBw sbresv.BwCls
+	MaxBw sibra.BwCls
 }
 
 func SteadyReqFromRaw(raw common.RawBytes, numHops int) (*SteadyReq, error) {
@@ -79,8 +80,8 @@ func SteadyReqFromBase(b *Base, raw common.RawBytes, numHops int) (*SteadyReq, e
 	block := &SteadyReq{
 		Base:        b,
 		Info:        sbresv.NewInfoFromRaw(raw[off:end]),
-		MinBw:       sbresv.BwCls(raw[offSteadyResvMin]),
-		MaxBw:       sbresv.BwCls(raw[offSteadyResvMax]),
+		MinBw:       sibra.BwCls(raw[offSteadyResvMin]),
+		MaxBw:       sibra.BwCls(raw[offSteadyResvMax]),
 		OfferFields: make([]*Offer, numHops),
 		Lines:       make([]byte, numHops),
 	}
@@ -94,7 +95,7 @@ func SteadyReqFromBase(b *Base, raw common.RawBytes, numHops int) (*SteadyReq, e
 }
 
 func NewSteadyReq(t RequestType, info *sbresv.Info,
-	min, max sbresv.BwCls, numHops uint8) *SteadyReq {
+	min, max sibra.BwCls, numHops uint8) *SteadyReq {
 
 	base := &Base{
 		Type:     t,

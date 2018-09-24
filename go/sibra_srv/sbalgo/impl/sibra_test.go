@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sbalgo
+package impl
 
 import (
 	"path/filepath"
 	"testing"
 
 	"github.com/scionproto/scion/go/lib/addr"
-	libsibra "github.com/scionproto/scion/go/lib/sibra"
+	"github.com/scionproto/scion/go/lib/sibra"
+	"github.com/scionproto/scion/go/lib/sibra/sbcreate"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/topology"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 	"github.com/scionproto/scion/go/sibra_srv/sbalgo/state"
 )
 
@@ -96,7 +97,7 @@ type benchParams struct {
 	ReqPerExistingSrc int
 }
 
-var result sibra.Algo
+var result sbalgo.Algo
 
 func benchmarkSibraFast(p benchParams, b *testing.B) {
 	b.StopTimer()
@@ -132,15 +133,15 @@ func benchmarkSibraSlow(p benchParams, b *testing.B) {
 	benchmarkAdmitSteady(s, p, b)
 }
 
-func benchmarkAdmitSteady(s sibra.Algo, p benchParams, b *testing.B) {
+func benchmarkAdmitSteady(s sbalgo.Algo, p benchParams, b *testing.B) {
 	src := addr.IA{I: 1}
-	ifidsLocal := sibra.IFTuple{
+	ifidsLocal := sbalgo.IFTuple{
 		InIfid: 0,
 		EgIfid: 81,
 	}
 	for r := 0; r < p.ReqPerExistingSrc; r++ {
 		for src.A = 0; src.A < addr.AS(p.ExistingSrcs); src.A++ {
-			p := setupParams(ifidsLocal, src, uint32(r), 10, sbresv.PathTypeUp, 255, 3)
+			p := setupParams(ifidsLocal, src, uint32(r), 10, sibra.PathTypeUp, 255, 3)
 			s.AdmitSteady(p)
 		}
 	}
@@ -148,27 +149,27 @@ func benchmarkAdmitSteady(s sibra.Algo, p benchParams, b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		src.A = addr.AS(n % p.ExistingSrcs)
 		r := n + p.ReqPerExistingSrc
-		p := setupParams(ifidsLocal, src, uint32(r), 10, sbresv.PathTypeUp, 255, 3)
+		p := setupParams(ifidsLocal, src, uint32(r), 10, sibra.PathTypeUp, 255, 3)
 		s.AdmitSteady(p)
 	}
 }
 
-func setupParams(ifids sibra.IFTuple, src addr.IA, suf uint32, maxBw sbresv.BwCls,
-	pt sbresv.PathType, rtt sbresv.RttCls, numHop uint8) sibra.AdmParams {
+func setupParams(ifids sbalgo.IFTuple, src addr.IA, suf uint32, maxBw sibra.BwCls,
+	pt sibra.PathType, rtt sibra.RttCls, numHop uint8) sbalgo.AdmParams {
 
 	info := &sbresv.Info{
 		BwCls:    maxBw,
 		PathType: pt,
-		ExpTick:  sbresv.CurrentTick().Add(sbresv.MaxSteadyTicks),
+		ExpTick:  sibra.CurrentTick().Add(sibra.MaxSteadyTicks),
 		RttCls:   rtt,
 	}
 	req := sbreq.NewSteadyReq(sbreq.RSteadySetup, info, 0, maxBw, numHop)
-	id := sbresv.NewSteadyID(src.A, suf)
-	extn, err := libsibra.NewSteadySetup(req, id)
+	id := sibra.NewSteadyID(src.A, suf)
+	extn, err := sbcreate.NewSteadySetup(req, id)
 	if err != nil {
 		panic(err)
 	}
-	p := sibra.AdmParams{
+	p := sbalgo.AdmParams{
 		Ifids: ifids,
 		Extn:  extn,
 		Src:   src,

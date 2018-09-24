@@ -40,7 +40,6 @@ import (
 	sd "github.com/scionproto/scion/go/lib/sciond"
 	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbextn"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/spath"
 	"github.com/scionproto/scion/go/lib/spath/spathmeta"
@@ -553,7 +552,7 @@ func (c *client) choosePath(interactive bool) (*sd.PathReplyEntry, *resvmgr.Watc
 			Paths: syncPaths,
 			Key:   paths[pathIdx].Key(),
 		},
-		MaxBWCls:    sbresv.BwCls(*bwCls),
+		MaxBWCls:    sibra.BwCls(*bwCls),
 		MinBWCls:    1,
 		Destination: remote.Host,
 	}

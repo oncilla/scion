@@ -31,7 +31,6 @@ import (
 	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/sciond"
 	"github.com/scionproto/scion/go/lib/sibra"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/snet/rpt"
 	"github.com/scionproto/scion/go/proto"
@@ -48,7 +47,7 @@ type Timers struct {
 
 const (
 	// Default wait time after a successful reservation operation.
-	DefaultNormalRefire = sbresv.TickDuration / 2
+	DefaultNormalRefire = sibra.TickDuration / 2
 	// Default wait time after a failed reservation operation.
 	DefaultErrorRefire = 100 * time.Millisecond
 )

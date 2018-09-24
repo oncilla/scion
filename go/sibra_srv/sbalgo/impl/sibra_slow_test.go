@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sbalgo
+package impl
 
 import (
 	"fmt"
@@ -23,25 +23,25 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/scionproto/scion/go/lib/addr"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/topology"
 	"github.com/scionproto/scion/go/lib/xtest"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 	"github.com/scionproto/scion/go/sibra_srv/sbalgo/state"
 )
 
 func TestAlgoSlow_Available(t *testing.T) {
 	Convey("Available is calculated correctly", t, func() {
 		s := loadAlgoSlow(t)
-		ifids := sibra.IFTuple{
+		ifids := sbalgo.IFTuple{
 			InIfid: 0,
 			EgIfid: 81,
 		}
-		p := setupParams(ifids, s.Topo.ISD_AS, 0, 27, sbresv.PathTypeUp, 10, 3)
+		p := setupParams(ifids, s.Topo.ISD_AS, 0, 27, sibra.PathTypeUp, 10, 3)
 		Convey("Initial available is correct", func() {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
-			min := sbresv.Bps(float64(minBps(in, eg)) * s.Delta)
+			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
 			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
 		})
 		_, err := s.AdmitSteady(p)
@@ -49,37 +49,37 @@ func TestAlgoSlow_Available(t *testing.T) {
 		Convey("Available is the same", func() {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
-			min := sbresv.Bps(float64(minBps(in, eg)) * s.Delta)
+			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
 			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
 		})
-		p = setupParams(ifids, s.Topo.ISD_AS, 1, 27, sbresv.PathTypeUp, 10, 3)
+		p = setupParams(ifids, s.Topo.ISD_AS, 1, 27, sibra.PathTypeUp, 10, 3)
 		Convey("Available has decreased", func() {
-			reserved := sbresv.BwCls(27).Bps()
+			reserved := sibra.BwCls(27).Bps()
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total - reserved
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total - reserved
-			min := sbresv.Bps(float64(minBps(in, eg)) * s.Delta)
+			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
 			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
 		})
-		ifids = sibra.IFTuple{
+		ifids = sbalgo.IFTuple{
 			InIfid: 16,
 			EgIfid: 81,
 		}
-		p = setupParams(ifids, s.Topo.ISD_AS, 1, 27, sbresv.PathTypeUp, 10, 3)
+		p = setupParams(ifids, s.Topo.ISD_AS, 1, 27, sibra.PathTypeUp, 10, 3)
 		Convey("Available affected", func() {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
-			min := sbresv.Bps(float64(minBps(in, eg)) * s.Delta)
+			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
 			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldBeLessThan, min)
 		})
-		ifids = sibra.IFTuple{
+		ifids = sbalgo.IFTuple{
 			InIfid: 81,
 			EgIfid: 16,
 		}
-		p = setupParams(ifids, s.Topo.ISD_AS, 1, 27, sbresv.PathTypeDown, 10, 3)
+		p = setupParams(ifids, s.Topo.ISD_AS, 1, 27, sibra.PathTypeDown, 10, 3)
 		Convey("Available not affected", func() {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
-			min := sbresv.Bps(float64(minBps(in, eg)) * s.Delta)
+			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
 			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
 		})
 
@@ -89,15 +89,15 @@ func TestAlgoSlow_Available(t *testing.T) {
 func TestAlgoSlow_transDem(t *testing.T) {
 	Convey("Transit demand is calculated correctly", t, func() {
 		s := loadAlgoSlow(t)
-		ifidsLocal := sibra.IFTuple{
+		ifidsLocal := sbalgo.IFTuple{
 			InIfid: 0,
 			EgIfid: 81,
 		}
-		p := setupParams(ifidsLocal, s.Topo.ISD_AS, 0, 27, sbresv.PathTypeUp, 10, 3)
+		p := setupParams(ifidsLocal, s.Topo.ISD_AS, 0, 27, sibra.PathTypeUp, 10, 3)
 		Convey("No transit demand except for request", func() {
 			for in := range s.Infos {
 				for eg := range s.Infos {
-					tup := sibra.IFTuple{
+					tup := sbalgo.IFTuple{
 						InIfid: in,
 						EgIfid: eg,
 					}
@@ -117,7 +117,7 @@ func TestAlgoSlow_transDem(t *testing.T) {
 			defer s.Unlock()
 			for in := range s.Infos {
 				for eg := range s.Infos {
-					tup := sibra.IFTuple{
+					tup := sbalgo.IFTuple{
 						InIfid: in,
 						EgIfid: eg,
 					}
@@ -130,13 +130,13 @@ func TestAlgoSlow_transDem(t *testing.T) {
 				}
 			}
 		})
-		p = setupParams(ifidsLocal, s.Topo.ISD_AS, 1, 27, sbresv.PathTypeUp, 10, 3)
+		p = setupParams(ifidsLocal, s.Topo.ISD_AS, 1, 27, sibra.PathTypeUp, 10, 3)
 		Convey("Transit demand considers existing reservation", func() {
 			s.Lock()
 			defer s.Unlock()
 			for in := range s.Infos {
 				for eg := range s.Infos {
-					tup := sibra.IFTuple{
+					tup := sbalgo.IFTuple{
 						InIfid: in,
 						EgIfid: eg,
 					}
@@ -149,19 +149,19 @@ func TestAlgoSlow_transDem(t *testing.T) {
 				}
 			}
 		})
-		ifidsUp := sibra.IFTuple{
+		ifidsUp := sbalgo.IFTuple{
 			InIfid: 16,
 			EgIfid: 81,
 		}
 		up := s.Topo.ISD_AS
 		up.A++
-		p = setupParams(ifidsUp, up, 1, 27, sbresv.PathTypeUp, 10, 3)
+		p = setupParams(ifidsUp, up, 1, 27, sibra.PathTypeUp, 10, 3)
 		Convey("Transit demand considers other interface pairs", func() {
 			s.Lock()
 			defer s.Unlock()
 			for in := range s.Infos {
 				for eg := range s.Infos {
-					tup := sibra.IFTuple{
+					tup := sbalgo.IFTuple{
 						InIfid: in,
 						EgIfid: eg,
 					}
@@ -186,12 +186,12 @@ func TestAlgoSlow_transDem(t *testing.T) {
 func TestAlgoSlow_inDem(t *testing.T) {
 	Convey("Ingress demand is calculated correctly", t, func() {
 		s := loadAlgoSlow(t)
-		ifidsLocal := sibra.IFTuple{
+		ifidsLocal := sbalgo.IFTuple{
 			InIfid: 0,
 			EgIfid: 81,
 		}
-		p := setupParams(ifidsLocal, s.Topo.ISD_AS, 0, 10, sbresv.PathTypeUp, 10, 3)
-		bps := sbresv.BwCls(10).Bps()
+		p := setupParams(ifidsLocal, s.Topo.ISD_AS, 0, 10, sibra.PathTypeUp, 10, 3)
+		bps := sibra.BwCls(10).Bps()
 
 		checker := inDemChecker{
 			prefix: "Initial ",
@@ -202,21 +202,21 @@ func TestAlgoSlow_inDem(t *testing.T) {
 			checker.checkOwnInDem(bps, p)
 		})
 		for i := 0; i < 10; i++ {
-			p := setupParams(ifidsLocal, s.Topo.ISD_AS, uint32(i), 10, sbresv.PathTypeUp, 10, 3)
+			p := setupParams(ifidsLocal, s.Topo.ISD_AS, uint32(i), 10, sibra.PathTypeUp, 10, 3)
 			_, err := s.AdmitSteady(p)
 			xtest.FailOnErr(t, err)
 			checker.prefix = "Check " + strconv.Itoa(i) + " "
-			checker.checkOwnInDem(bps*sbresv.Bps(i+1), p)
+			checker.checkOwnInDem(bps*sibra.Bps(i+1), p)
 		}
 
-		ifidsDown := sibra.IFTuple{
+		ifidsDown := sbalgo.IFTuple{
 			InIfid: 0,
 			EgIfid: 16,
 		}
 		up := s.Topo.ISD_AS
 		up.A++
-		p = setupParams(ifidsDown, up, 0, 10, sbresv.PathTypeDown, 10, 3)
-		exp := map[addr.IA]sbresv.Bps{
+		p = setupParams(ifidsDown, up, 0, 10, sibra.PathTypeDown, 10, 3)
+		exp := map[addr.IA]sibra.Bps{
 			s.Topo.ISD_AS: 10 * bps,
 		}
 		checker = inDemChecker{
@@ -231,11 +231,11 @@ func TestAlgoSlow_inDem(t *testing.T) {
 			checker.checkOthersInDem(exp, p)
 		})
 		for i := 0; i < 10; i++ {
-			p := setupParams(ifidsDown, up, uint32(i), 10, sbresv.PathTypeDown, 10, 3)
+			p := setupParams(ifidsDown, up, uint32(i), 10, sibra.PathTypeDown, 10, 3)
 			_, err := s.AdmitSteady(p)
 			xtest.FailOnErr(t, err)
 			checker.prefix = "Check " + strconv.Itoa(i) + " "
-			checker.checkOwnInDem(bps*sbresv.Bps(i+1), p)
+			checker.checkOwnInDem(bps*sibra.Bps(i+1), p)
 			checker.checkOthersInDem(exp, p)
 		}
 
@@ -245,10 +245,10 @@ func TestAlgoSlow_inDem(t *testing.T) {
 type inDemChecker struct {
 	s      *AlgoSlow
 	prefix string
-	ifids  sibra.IFTuple
+	ifids  sbalgo.IFTuple
 }
 
-func (c *inDemChecker) checkOwnInDem(exp sbresv.Bps, p sibra.AdmParams) {
+func (c *inDemChecker) checkOwnInDem(exp sibra.Bps, p sbalgo.AdmParams) {
 	for in := range c.s.Infos {
 		str := fmt.Sprintf(c.prefix+"own InDem(%d-src%s)", in, p.Src)
 		if in != c.ifids.InIfid {
@@ -259,7 +259,7 @@ func (c *inDemChecker) checkOwnInDem(exp sbresv.Bps, p sibra.AdmParams) {
 	}
 }
 
-func (c *inDemChecker) checkOthersInDem(exp map[addr.IA]sbresv.Bps, p sibra.AdmParams) {
+func (c *inDemChecker) checkOthersInDem(exp map[addr.IA]sibra.Bps, p sbalgo.AdmParams) {
 	in := c.ifids.InIfid
 	for other, expDem := range exp {
 		str := fmt.Sprintf(c.prefix+"others InDem(%d-src%s)", in, other)
@@ -270,12 +270,12 @@ func (c *inDemChecker) checkOthersInDem(exp map[addr.IA]sbresv.Bps, p sibra.AdmP
 func TestAlgoSlow_egDem(t *testing.T) {
 	Convey("Egress demand is calculated correctly", t, func() {
 		s := loadAlgoSlow(t)
-		ifidsLocal := sibra.IFTuple{
+		ifidsLocal := sbalgo.IFTuple{
 			InIfid: 0,
 			EgIfid: 81,
 		}
-		p := setupParams(ifidsLocal, s.Topo.ISD_AS, 0, 10, sbresv.PathTypeUp, 10, 3)
-		bps := sbresv.BwCls(10).Bps()
+		p := setupParams(ifidsLocal, s.Topo.ISD_AS, 0, 10, sibra.PathTypeUp, 10, 3)
+		bps := sibra.BwCls(10).Bps()
 
 		checker := egDemChecker{
 			prefix: "Initial ",
@@ -286,21 +286,21 @@ func TestAlgoSlow_egDem(t *testing.T) {
 			checker.checkOwnEgDem(bps, p)
 		})
 		for i := 0; i < 10; i++ {
-			p := setupParams(ifidsLocal, s.Topo.ISD_AS, uint32(i), 10, sbresv.PathTypeUp, 10, 3)
+			p := setupParams(ifidsLocal, s.Topo.ISD_AS, uint32(i), 10, sibra.PathTypeUp, 10, 3)
 			_, err := s.AdmitSteady(p)
 			xtest.FailOnErr(t, err)
 			checker.prefix = "Check " + strconv.Itoa(i) + " "
-			checker.checkOwnEgDem(bps*sbresv.Bps(i+1), p)
+			checker.checkOwnEgDem(bps*sibra.Bps(i+1), p)
 		}
 
-		ifidsUp := sibra.IFTuple{
+		ifidsUp := sbalgo.IFTuple{
 			InIfid: 16,
 			EgIfid: 81,
 		}
 		up := s.Topo.ISD_AS
 		up.A++
-		p = setupParams(ifidsUp, up, 0, 10, sbresv.PathTypeUp, 10, 3)
-		exp := map[addr.IA]sbresv.Bps{
+		p = setupParams(ifidsUp, up, 0, 10, sibra.PathTypeUp, 10, 3)
+		exp := map[addr.IA]sibra.Bps{
 			s.Topo.ISD_AS: 10 * bps,
 		}
 		checker = egDemChecker{
@@ -315,11 +315,11 @@ func TestAlgoSlow_egDem(t *testing.T) {
 			checker.checkOthersEgDem(exp, p)
 		})
 		for i := 0; i < 10; i++ {
-			p := setupParams(ifidsUp, up, uint32(i), 10, sbresv.PathTypeUp, 10, 3)
+			p := setupParams(ifidsUp, up, uint32(i), 10, sibra.PathTypeUp, 10, 3)
 			_, err := s.AdmitSteady(p)
 			xtest.FailOnErr(t, err)
 			checker.prefix = "Check " + strconv.Itoa(i) + " "
-			checker.checkOwnEgDem(bps*sbresv.Bps(i+1), p)
+			checker.checkOwnEgDem(bps*sibra.Bps(i+1), p)
 			checker.checkOthersEgDem(exp, p)
 		}
 
@@ -329,10 +329,10 @@ func TestAlgoSlow_egDem(t *testing.T) {
 type egDemChecker struct {
 	s      *AlgoSlow
 	prefix string
-	ifids  sibra.IFTuple
+	ifids  sbalgo.IFTuple
 }
 
-func (c *egDemChecker) checkOwnEgDem(exp sbresv.Bps, p sibra.AdmParams) {
+func (c *egDemChecker) checkOwnEgDem(exp sibra.Bps, p sbalgo.AdmParams) {
 	for eg := range c.s.Infos {
 		str := fmt.Sprintf(c.prefix+"own EgDem(%d-src%s)", eg, p.Src)
 		if eg != c.ifids.EgIfid {
@@ -343,7 +343,7 @@ func (c *egDemChecker) checkOwnEgDem(exp sbresv.Bps, p sibra.AdmParams) {
 	}
 }
 
-func (c *egDemChecker) checkOthersEgDem(exp map[addr.IA]sbresv.Bps, p sibra.AdmParams) {
+func (c *egDemChecker) checkOthersEgDem(exp map[addr.IA]sibra.Bps, p sbalgo.AdmParams) {
 	eg := c.ifids.EgIfid
 	for other, expDem := range exp {
 		str := fmt.Sprintf(c.prefix+"others EgDem(%d-src%s)", eg, other)
@@ -354,28 +354,28 @@ func (c *egDemChecker) checkOthersEgDem(exp map[addr.IA]sbresv.Bps, p sibra.AdmP
 func TestAlgoSlow_tubeRatio(t *testing.T) {
 	Convey("Tube ratio is calculated correctly", t, func() {
 		s := loadAlgoSlow(t)
-		ifidsLocal := sibra.IFTuple{
+		ifidsLocal := sbalgo.IFTuple{
 			InIfid: 0,
 			EgIfid: 81,
 		}
 		for i := 0; i < 10; i++ {
-			p := setupParams(ifidsLocal, s.Topo.ISD_AS, uint32(i), 10, sbresv.PathTypeUp, 10, 3)
+			p := setupParams(ifidsLocal, s.Topo.ISD_AS, uint32(i), 10, sibra.PathTypeUp, 10, 3)
 			_, err := s.AdmitSteady(p)
 			xtest.FailOnErr(t, err)
 		}
 
-		ifidsUp := sibra.IFTuple{
+		ifidsUp := sbalgo.IFTuple{
 			InIfid: 16,
 			EgIfid: 81,
 		}
 		up := s.Topo.ISD_AS
 		up.A++
-		bps := sbresv.BwCls(10).Bps()
+		bps := sibra.BwCls(10).Bps()
 		otherDemand := float64(10 * bps)
 		for i := 0; i < 10; i++ {
-			p := setupParams(ifidsUp, up, uint32(i), 10, sbresv.PathTypeUp, 10, 3)
+			p := setupParams(ifidsUp, up, uint32(i), 10, sibra.PathTypeUp, 10, 3)
 			ratio := s.tubeRatio(ifidsUp, p)
-			thisDemand := float64(sbresv.Bps(i+1) * bps)
+			thisDemand := float64(sibra.Bps(i+1) * bps)
 			SoMsg("Ratio", ratio, ShouldEqual, (thisDemand)/(thisDemand+otherDemand))
 			_, err := s.AdmitSteady(p)
 			xtest.FailOnErr(t, err)

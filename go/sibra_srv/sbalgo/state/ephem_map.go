@@ -15,17 +15,16 @@
 package state
 
 import (
+	"runtime"
 	"sync"
 	"time"
 
-	"runtime"
-
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 const (
-	EphemResvGCInterval = sbresv.TickInterval * time.Second
+	EphemResvGCInterval = sibra.TickInterval * time.Second
 )
 
 type EphemResvMap struct {
@@ -52,7 +51,7 @@ func NewEpehmResvMap() *EphemResvMap {
 	return M
 }
 
-func (m *ephemResvMap) Add(id sbresv.ID, entry *EphemResvEntry) error {
+func (m *ephemResvMap) Add(id sibra.ID, entry *EphemResvEntry) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	_, ok := m.get(id)
@@ -63,13 +62,13 @@ func (m *ephemResvMap) Add(id sbresv.ID, entry *EphemResvEntry) error {
 	return nil
 }
 
-func (m *ephemResvMap) Get(id sbresv.ID) (*EphemResvEntry, bool) {
+func (m *ephemResvMap) Get(id sibra.ID) (*EphemResvEntry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.get(id)
 }
 
-func (m *ephemResvMap) get(id sbresv.ID) (*EphemResvEntry, bool) {
+func (m *ephemResvMap) get(id sibra.ID) (*EphemResvEntry, bool) {
 	r, ok := m.resvs[string([]byte(id))]
 	if !ok {
 		return nil, false
@@ -80,7 +79,7 @@ func (m *ephemResvMap) get(id sbresv.ID) (*EphemResvEntry, bool) {
 	return r, true
 }
 
-func (m *ephemResvMap) Delete(id sbresv.ID) {
+func (m *ephemResvMap) Delete(id sibra.ID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	r, ok := m.resvs[string([]byte(id))]
@@ -132,7 +131,7 @@ type ephemJanitor struct {
 
 func (j *ephemJanitor) Run(m *ephemResvMap) {
 	j.stop = make(chan bool)
-	time.Sleep((sbresv.CurrentTick() + 1).Time().Sub(time.Now()))
+	time.Sleep((sibra.CurrentTick() + 1).Time().Sub(time.Now()))
 	ticker := time.NewTicker(j.Interval)
 	for {
 		select {

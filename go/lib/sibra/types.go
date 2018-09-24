@@ -12,24 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sbresv
+package sibra
 
 import (
-	"fmt"
-
-	"time"
-
-	"math"
-
-	"math/rand"
-
 	"bytes"
+	"fmt"
+	"math"
+	"math/rand"
+	"time"
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
 )
 
 const (
+	// Version is the SIBRA Version number.
+	// It is a 2-bit value to be used as (SCION ver, SIBRA ver).
+	Version byte = 0
+
 	// SteadyIDLen is the steady ID length.
 	SteadyIDLen = 10
 	// EphemIDLen is the ephemeral ID length.

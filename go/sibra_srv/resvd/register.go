@@ -15,33 +15,30 @@
 package resvd
 
 import (
+	"context"
+	"fmt"
 	"sync"
 	"time"
 
-	log "github.com/inconshreveable/log15"
-
-	"fmt"
-
-	"context"
-
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
+	"github.com/scionproto/scion/go/lib/log"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/resvdb/query"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/sibra_srv/conf"
 	"github.com/scionproto/scion/go/sibra_srv/dist"
 )
 
 const (
-	RegInterval = sbresv.TickDuration
+	RegInterval = sibra.TickDuration
 	RegTimeout  = 1 * time.Second
 )
 
 type NotifyReg struct {
-	Id  sbresv.ID
-	Idx sbresv.Index
-	Exp sbresv.Tick
+	Id  sibra.ID
+	Idx sibra.Index
+	Exp sibra.Tick
 }
 
 type RegState struct {

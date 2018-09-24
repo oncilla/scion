@@ -15,16 +15,16 @@
 package sibra_mgmt
 
 import (
-	"fmt"
-
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/proto"
 )
@@ -45,7 +45,7 @@ func (iface PathInterface) String() string {
 var _ proto.Cerealizable = (*BlockMeta)(nil)
 
 type BlockMeta struct {
-	Id            sbresv.ID
+	Id            sibra.ID
 	RawBlock      common.RawBytes `capnp:"block"`
 	Block         *sbresv.Block   `capnp:"-"`
 	RawCreation   uint32          `capnp:"creation"`

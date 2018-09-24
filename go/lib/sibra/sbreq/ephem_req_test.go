@@ -21,6 +21,7 @@ import (
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
@@ -31,7 +32,7 @@ func Test_Fail(t *testing.T) {
 				Type:     REphmSetup,
 				Accepted: true,
 			},
-			ReqID: sbresv.NewEphemID(addr.AS(0), nil),
+			ReqID: sibra.NewEphemID(addr.AS(0), nil),
 			Block: &sbresv.Block{
 				Info:     &sbresv.Info{},
 				SOFields: make([]*sbresv.SOField, 10),

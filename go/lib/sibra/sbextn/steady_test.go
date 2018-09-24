@@ -20,6 +20,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/scionproto/scion/go/lib/addr"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
@@ -33,10 +34,10 @@ func Test_EphemeralSetup(t *testing.T) {
 				IsRequest: true,
 				Version:   Version,
 				PathLens:  []uint8{2, 3, 2},
-				IDs: []sbresv.ID{sbresv.NewSteadyID(addr.AS(1), 0),
-					sbresv.NewSteadyID(addr.AS(2), 1), sbresv.NewSteadyID(addr.AS(3), 4)},
+				IDs: []sibra.ID{sibra.NewSteadyID(addr.AS(1), 0),
+					sibra.NewSteadyID(addr.AS(2), 1), sibra.NewSteadyID(addr.AS(3), 4)},
 				Request: &sbreq.EphemReq{
-					ReqID: sbresv.NewEphemID(addr.AS(4), nil),
+					ReqID: sibra.NewEphemID(addr.AS(4), nil),
 					Block: &sbresv.Block{
 						Info:     &sbresv.Info{},
 						SOFields: make([]*sbresv.SOField, 5),
@@ -185,10 +186,10 @@ func Test_EphemeralSetup(t *testing.T) {
 				Version:   Version,
 				SOFIndex:  6,
 				PathLens:  []uint8{2, 3, 2},
-				IDs: []sbresv.ID{sbresv.NewSteadyID(addr.AS(1), 0),
-					sbresv.NewSteadyID(addr.AS(2), 1), sbresv.NewSteadyID(addr.AS(3), 4)},
+				IDs: []sibra.ID{sibra.NewSteadyID(addr.AS(1), 0),
+					sibra.NewSteadyID(addr.AS(2), 1), sibra.NewSteadyID(addr.AS(3), 4)},
 				Request: &sbreq.EphemReq{
-					ReqID: sbresv.NewEphemID(addr.AS(4), nil),
+					ReqID: sibra.NewEphemID(addr.AS(4), nil),
 					Block: &sbresv.Block{
 						Info:     &sbresv.Info{},
 						SOFields: make([]*sbresv.SOField, 5),

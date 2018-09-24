@@ -19,7 +19,7 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 const (
@@ -65,7 +65,7 @@ func BaseFromRaw(raw common.RawBytes) (*Base, error) {
 	return b, nil
 }
 
-func (b *Base) EphemID() sbresv.ID {
+func (b *Base) EphemID() sibra.ID {
 	return nil
 }
 

@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 const (
@@ -52,36 +53,36 @@ const (
 // the first hop to reject the reservation.
 type Info struct {
 	// ExpTick is the SIBRA tick when the reservation expires.
-	ExpTick Tick
+	ExpTick sibra.Tick
 	// BwCls is the bandwidth class.
-	BwCls BwCls
+	BwCls sibra.BwCls
 	// RttCls is the round trip class.
-	RttCls RttCls
+	RttCls sibra.RttCls
 	// Index is the reservation index.
-	Index Index
+	Index sibra.Index
 	// PathType is the path type.
-	PathType PathType
+	PathType sibra.PathType
 	// FailHop is the fail hop. It is unset in an active reservation.
 	FailHop uint8
 }
 
 func NewInfoFromRaw(raw common.RawBytes) *Info {
 	return &Info{
-		ExpTick:  Tick(common.Order.Uint32(raw[:4])),
-		BwCls:    BwCls(raw[4]),
-		RttCls:   RttCls(raw[5]),
+		ExpTick:  sibra.Tick(common.Order.Uint32(raw[:4])),
+		BwCls:    sibra.BwCls(raw[4]),
+		RttCls:   sibra.RttCls(raw[5]),
 		Index:    parseIdx(raw[6]),
 		PathType: parsePathType(raw[6]),
 		FailHop:  raw[7],
 	}
 }
 
-func parseIdx(field uint8) Index {
-	return Index(field >> 4)
+func parseIdx(field uint8) sibra.Index {
+	return sibra.Index(field >> 4)
 }
 
-func parsePathType(field uint8) PathType {
-	return PathType(field & 0x7)
+func parsePathType(field uint8) sibra.PathType {
+	return sibra.PathType(field & 0x7)
 }
 
 func (i *Info) Len() int {

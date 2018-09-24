@@ -16,16 +16,16 @@ package state
 
 import (
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 type IFState struct {
-	Total     sbresv.Bps
-	Reserved  sbresv.Bps
+	Total     sibra.Bps
+	Reserved  sibra.Bps
 	Unlimited bool
 }
 
-func (b *IFState) SetTotal(total sbresv.Bps) error {
+func (b *IFState) SetTotal(total sibra.Bps) error {
 	if total < b.Reserved {
 		return common.NewBasicError("New total smaller than reserved", nil,
 			"reserved", b.Reserved, "total", total)
@@ -37,7 +37,7 @@ func (b *IFState) SetTotal(total sbresv.Bps) error {
 
 // Alloc tries allocating bandwidth. If successful it returns the allocated value
 // and true. If Unsuccessful it returns the max value and false.
-func (b *IFState) Alloc(bw sbresv.Bps) error {
+func (b *IFState) Alloc(bw sibra.Bps) error {
 	if bw < 0 {
 		panic("Negative bw allocation not permitted")
 	}
@@ -48,11 +48,11 @@ func (b *IFState) Alloc(bw sbresv.Bps) error {
 	return nil
 }
 
-func (b *IFState) Free() sbresv.Bps {
+func (b *IFState) Free() sibra.Bps {
 	return b.Total - b.Reserved
 }
 
-func (b *IFState) Dealloc(bw sbresv.Bps) error {
+func (b *IFState) Dealloc(bw sibra.Bps) error {
 	if bw < 0 {
 		panic("Negative bw deallocation not permitted")
 	}

@@ -15,6 +15,7 @@
 package sqlite
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -23,14 +24,12 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"bytes"
-
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/resvdb/conn"
 	"github.com/scionproto/scion/go/lib/sibra/resvdb/query"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/sqlite"
 )
 
@@ -130,7 +129,7 @@ func (b *Backend) insert(meta *sibra_mgmt.BlockMeta) error {
 	return nil
 }
 
-func (b *Backend) get(id sbresv.ID) (*resvMeta, error) {
+func (b *Backend) get(id sibra.ID) (*resvMeta, error) {
 	rows, err := b.db.Query("SELECT RowID, Creation, SegID, LastUpdated  FROM SteadyResvs "+
 		"WHERE ResvID=?", common.RawBytes(id))
 	if err != nil {
@@ -251,7 +250,7 @@ func (b *Backend) insertStartOrEnd(ia addr.IA, rowID int64,
 	return nil
 }
 
-func (b *Backend) Delete(resvID sbresv.ID) (int, error) {
+func (b *Backend) Delete(resvID sibra.ID) (int, error) {
 	b.Lock()
 	defer b.Unlock()
 	if b.db == nil {

@@ -12,44 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sbalgo
+package impl
 
 import (
 	"fmt"
-
 	"math"
-
 	"strings"
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/assert"
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/log"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/topology"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 	"github.com/scionproto/scion/go/sibra_srv/sbalgo/state"
 )
 
 type demState struct {
 	src          addr.IA
-	ifids        sibra.IFTuple
-	currInDem    sbresv.Bps
-	currEgDem    sbresv.Bps
-	currSrcDem   sbresv.Bps
-	currSrcAlloc sbresv.Bps
-	nextInDem    sbresv.Bps
-	nextEgDem    sbresv.Bps
-	nextSrcDem   sbresv.Bps
-	nextSrcAlloc sbresv.Bps
+	ifids        sbalgo.IFTuple
+	currInDem    sibra.Bps
+	currEgDem    sibra.Bps
+	currSrcDem   sibra.Bps
+	currSrcAlloc sibra.Bps
+	nextInDem    sibra.Bps
+	nextEgDem    sibra.Bps
+	nextSrcDem   sibra.Bps
+	nextSrcAlloc sibra.Bps
 }
 
 // calcState holds the calculation state for the ideal computation.
 type calcState struct {
-	sibra.AdmParams
-	tempInDem  sbresv.Bps
-	tempEgDem  sbresv.Bps
-	tempSrcDem sbresv.Bps
+	sbalgo.AdmParams
+	tempInDem  sibra.Bps
+	tempEgDem  sibra.Bps
+	tempSrcDem sibra.Bps
 }
 
 type SrcMap map[addr.IA]SrcEntry
@@ -71,23 +69,23 @@ func (s SrcMap) String() string {
 type SrcEntry struct {
 	// InDemand holds the sum of all max bandwidth classes for all
 	// reservations going through an ingress interface for this source.
-	InDemand map[common.IFIDType]sbresv.Bps
+	InDemand map[common.IFIDType]sibra.Bps
 	// EgDemand holds the sum of all max bandwidth classes for all
 	// reservations going through an egress interface for this source.
-	EgDemand map[common.IFIDType]sbresv.Bps
+	EgDemand map[common.IFIDType]sibra.Bps
 	// SrcDemand holds the sum of all max bandwidth classes for all
 	// reservations going through the interface tuple for this source.
-	SrcDemand map[sibra.IFTuple]sbresv.Bps
+	SrcDemand map[sbalgo.IFTuple]sibra.Bps
 	// SrcAlloc holds the sum of the allocated bandwidth for all
 	// reservations going through the interface tuple for this source.
-	SrcAlloc map[sibra.IFTuple]sbresv.Bps
+	SrcAlloc map[sbalgo.IFTuple]sibra.Bps
 	// ephemMap holds all ephemeral reservations for a given source.
 	ephemMap *state.EphemResvMap
 }
 
-var _ sibra.Algo = (*AlgoFast)(nil)
-var _ sibra.SteadyAdm = (*AlgoFast)(nil)
-var _ sibra.EphemAdm = (*AlgoFast)(nil)
+var _ sbalgo.Algo = (*AlgoFast)(nil)
+var _ sbalgo.SteadyAdm = (*AlgoFast)(nil)
+var _ sbalgo.EphemAdm = (*AlgoFast)(nil)
 
 // AlgoFast implements the SIBRA algorithm. It caches the calculation of the
 // sums in the algorithm in order to improve performance. In stead of naively
@@ -97,9 +95,9 @@ var _ sibra.EphemAdm = (*AlgoFast)(nil)
 type AlgoFast struct {
 	*algoBase
 	// TransitDemand keeps track of the transit demand between interfaces.
-	TransitDemand map[sibra.IFTuple]float64
+	TransitDemand map[sbalgo.IFTuple]float64
 	// TransitAlloc keeps track of the transit allocation between interfaces.
-	TransitAlloc map[sibra.IFTuple]float64
+	TransitAlloc map[sbalgo.IFTuple]float64
 	// SrcMap maps source AS to the source entry which keeps track of the
 	// source demand and out demand values of a given source.
 	SourceMap SrcMap
@@ -114,8 +112,8 @@ func NewSibraFast(topo *topology.Topo, matrix state.Matrix) (*AlgoFast, error) {
 		algoBase: &algoBase{
 			ephemAdm: &ephemAdm{s},
 		},
-		TransitDemand: make(map[sibra.IFTuple]float64),
-		TransitAlloc:  make(map[sibra.IFTuple]float64),
+		TransitDemand: make(map[sbalgo.IFTuple]float64),
+		TransitAlloc:  make(map[sbalgo.IFTuple]float64),
 		SourceMap:     make(SrcMap, 10000),
 	}
 	return a, nil
@@ -123,25 +121,25 @@ func NewSibraFast(topo *topology.Topo, matrix state.Matrix) (*AlgoFast, error) {
 
 // AdmitSteady does executes the SIBRA algorithm. The provided interfaces must be
 // in the reservation direction.
-func (s *AlgoFast) AdmitSteady(params sibra.AdmParams) (sibra.SteadyRes, error) {
+func (s *AlgoFast) AdmitSteady(params sbalgo.AdmParams) (sbalgo.SteadyRes, error) {
 	return admitSteady(s, params, s.Topo)
 }
 
 // Available calculates the available bandwidth on the out interface. It assumes
 // the caller holds the lock over the receiver.
-func (s *AlgoFast) Available(ifids sibra.IFTuple, id sbresv.ID) sbresv.Bps {
-	var alloc sbresv.Bps
+func (s *AlgoFast) Available(ifids sbalgo.IFTuple, id sibra.ID) sibra.Bps {
+	var alloc sibra.Bps
 	entry, ok := s.SteadyMap.Get(id)
 	if ok && entry.Ifids == ifids {
 		alloc = entry.Allocated
 	}
 	free := minBps(s.Infos[ifids.EgIfid].Egress.Free(), s.Infos[ifids.InIfid].Ingress.Free())
-	return sbresv.Bps(float64(free+alloc) * s.Delta)
+	return sibra.Bps(float64(free+alloc) * s.Delta)
 }
 
 // Ideal calculates the ideal bandwidth the reservation should get. It assumes
 // the caller holds the lock over the receiver.
-func (s *AlgoFast) Ideal(p sibra.AdmParams) sbresv.Bps {
+func (s *AlgoFast) Ideal(p sbalgo.AdmParams) sibra.Bps {
 	c := &calcState{
 		AdmParams: p,
 	}
@@ -149,11 +147,11 @@ func (s *AlgoFast) Ideal(p sibra.AdmParams) sbresv.Bps {
 	outCap := float64(s.Infos[c.Ifids.EgIfid].Egress.Total)
 	tubeRatio := s.tubeRatio(c)
 	linkRatio := s.linkRatio(c)
-	return sbresv.Bps(outCap * tubeRatio * linkRatio)
+	return sibra.Bps(outCap * tubeRatio * linkRatio)
 }
 
 func (s *AlgoFast) setCalcState(c *calcState) {
-	var currSrcDem sbresv.Bps
+	var currSrcDem sibra.Bps
 	inCap := s.Infos[c.Ifids.InIfid].Ingress.Total
 	egCap := s.Infos[c.Ifids.EgIfid].Egress.Total
 	c.tempSrcDem = minBps(minBps(c.Req.MaxBw.Bps(), inCap), egCap)
@@ -197,7 +195,7 @@ func (s *AlgoFast) tubeRatio(c *calcState) float64 {
 	return transDem / sum
 }
 
-func (s *AlgoFast) capTempTransDem(ifids sibra.IFTuple, c *calcState) float64 {
+func (s *AlgoFast) capTempTransDem(ifids sbalgo.IFTuple, c *calcState) float64 {
 	var currAdjSrcDem, tempAdjSrcDem float64
 	inCap := s.Infos[ifids.InIfid].Ingress.Total
 	egCap := s.Infos[ifids.EgIfid].Egress.Total
@@ -220,13 +218,13 @@ func (s *AlgoFast) capTempTransDem(ifids sibra.IFTuple, c *calcState) float64 {
 
 // tempAdjSrcDemNew calculates the demand for the source of the requested reservation
 // if the source does not already have a reservation in the reservation map.
-func (s *AlgoFast) tempAdjSrcDemNew(inCap, egCap sbresv.Bps, c *calcState) (float64, float64) {
+func (s *AlgoFast) tempAdjSrcDemNew(inCap, egCap sibra.Bps, c *calcState) (float64, float64) {
 	return 0, s.calcAdjSrcDem(inCap, egCap, c.tempInDem, c.tempEgDem, c.tempSrcDem)
 }
 
 // tempAdjSrcDemExisting calculates the demand for the source of the requested reservation
 // if the source already has a reservation in the reservation map.
-func (s *AlgoFast) tempAdjSrcDemExisting(inCap, egCap sbresv.Bps, ifids sibra.IFTuple,
+func (s *AlgoFast) tempAdjSrcDemExisting(inCap, egCap sibra.Bps, ifids sbalgo.IFTuple,
 	c *calcState) (float64, float64) {
 	currSrcDem := s.SourceMap[c.Src].SrcDemand[ifids]
 	currInDem := s.SourceMap[c.Src].InDemand[ifids.InIfid]
@@ -246,22 +244,22 @@ func (s *AlgoFast) tempAdjSrcDemExisting(inCap, egCap sbresv.Bps, ifids sibra.IF
 	return curr, temp
 }
 
-func (s *AlgoFast) calcAdjSrcDem(capIn, capEg, inDem, egDem, srcDem sbresv.Bps) float64 {
+func (s *AlgoFast) calcAdjSrcDem(capIn, capEg, inDem, egDem, srcDem sibra.Bps) float64 {
 	return s.scalingFactor(capIn, capEg, inDem, egDem) * float64(srcDem)
 }
 
-func (s *AlgoFast) scalingFactor(capIn, capEg, inDem, egDem sbresv.Bps) float64 {
+func (s *AlgoFast) scalingFactor(capIn, capEg, inDem, egDem sibra.Bps) float64 {
 	return math.Min(s.inScalFactr(capIn, inDem), s.egScalFactr(capEg, egDem))
 }
 
-func (s *AlgoFast) inScalFactr(capIn, inDem sbresv.Bps) float64 {
+func (s *AlgoFast) inScalFactr(capIn, inDem sibra.Bps) float64 {
 	if inDem <= 0 {
 		return 0
 	}
 	return float64(minBps(capIn, inDem)) / float64(inDem)
 }
 
-func (s *AlgoFast) egScalFactr(capEg, egDem sbresv.Bps) float64 {
+func (s *AlgoFast) egScalFactr(capEg, egDem sibra.Bps) float64 {
 	if egDem <= 0 {
 		return 0
 	}
@@ -288,8 +286,8 @@ func (s *AlgoFast) linkRatio(c *calcState) float64 {
 	return (tempScalFactr * float64(prevBw)) / denom
 }
 
-func (s *AlgoFast) tempSrcAlloc(prevBw, srcAlloc sbresv.Bps, c *calcState) sbresv.Bps {
-	var alloc sbresv.Bps
+func (s *AlgoFast) tempSrcAlloc(prevBw, srcAlloc sibra.Bps, c *calcState) sibra.Bps {
+	var alloc sibra.Bps
 	if steady, ok := s.SteadyMap.Get(c.Extn.ReqID); ok && steady.Ifids == c.Ifids {
 		alloc = steady.Allocated
 	}
@@ -298,7 +296,7 @@ func (s *AlgoFast) tempSrcAlloc(prevBw, srcAlloc sbresv.Bps, c *calcState) sbres
 
 // AddSteadyResv adds a steady reservation given the parameters and the allocated
 // bandwidth. It assumes that the caller holds the lock over the receiver.
-func (s *AlgoFast) AddSteadyResv(p sibra.AdmParams, alloc sbresv.BwCls) error {
+func (s *AlgoFast) AddSteadyResv(p sbalgo.AdmParams, alloc sibra.BwCls) error {
 	// Add index and reserve the required bandwidth.
 	info := *p.Req.Info
 	info.BwCls = alloc
@@ -312,7 +310,7 @@ func (s *AlgoFast) AddSteadyResv(p sibra.AdmParams, alloc sbresv.BwCls) error {
 	if !ok {
 		if p.Req.Info.Index != 0 {
 			return common.NewBasicError("Invalid initial index", nil,
-				"expected", sbresv.Index(0), "actual", p.Req.Info.Index)
+				"expected", sibra.Index(0), "actual", p.Req.Info.Index)
 		}
 		// If EphemResvMap is nil, it is set during updateSourceMap again.
 		stEntry = &state.SteadyResvEntry{
@@ -386,7 +384,7 @@ func (s *AlgoFast) addIndex(e *state.SteadyResvEntry, idx *state.SteadyResvIdx) 
 	return nil
 }
 
-func (s *AlgoFast) setNextDemState(dem *demState, diff, lastMax, nextMax sbresv.Bps) {
+func (s *AlgoFast) setNextDemState(dem *demState, diff, lastMax, nextMax sibra.Bps) {
 	min := minBps(s.Infos[dem.ifids.InIfid].Ingress.Total, s.Infos[dem.ifids.EgIfid].Egress.Total)
 	capLastMax := minBps(min, lastMax)
 	capNextMax := minBps(min, nextMax)
@@ -409,16 +407,16 @@ func (s *AlgoFast) updateSourceMap(dem *demState) *state.EphemResvMap {
 	if _, ok := s.SourceMap[dem.src]; !ok {
 		ephemMap := state.NewEpehmResvMap()
 		s.SourceMap[dem.src] = SrcEntry{
-			EgDemand: map[common.IFIDType]sbresv.Bps{
+			EgDemand: map[common.IFIDType]sibra.Bps{
 				dem.ifids.EgIfid: dem.nextEgDem,
 			},
-			InDemand: map[common.IFIDType]sbresv.Bps{
+			InDemand: map[common.IFIDType]sibra.Bps{
 				dem.ifids.InIfid: dem.nextInDem,
 			},
-			SrcDemand: map[sibra.IFTuple]sbresv.Bps{
+			SrcDemand: map[sbalgo.IFTuple]sibra.Bps{
 				dem.ifids: dem.nextSrcDem,
 			},
-			SrcAlloc: map[sibra.IFTuple]sbresv.Bps{
+			SrcAlloc: map[sbalgo.IFTuple]sibra.Bps{
 				dem.ifids: dem.nextSrcAlloc,
 			},
 			ephemMap: ephemMap,
@@ -436,7 +434,7 @@ func (s *AlgoFast) updateSourceMap(dem *demState) *state.EphemResvMap {
 	return nil
 }
 
-func (s *AlgoFast) allocIfInfo(ifids sibra.IFTuple, bps sbresv.Bps) error {
+func (s *AlgoFast) allocIfInfo(ifids sbalgo.IFTuple, bps sibra.Bps) error {
 	if err := s.Infos[ifids.InIfid].Ingress.Alloc(bps); err != nil {
 		return err
 	}
@@ -466,7 +464,7 @@ func (s *AlgoFast) allocIfInfo(ifids sibra.IFTuple, bps sbresv.Bps) error {
 // up. LastMax indicates the maximum bandwidth class of the reservation before
 // clean up. NextMax indicates the maximum after cleanup. It assumes the caller
 // holds the lock over the receiver.
-func (s *AlgoFast) CleanSteadyResv(c sibra.CleanParams) {
+func (s *AlgoFast) CleanSteadyResv(c sbalgo.CleanParams) {
 	if c.Dealloc > 0 {
 		s.cleanIfInfo(c.Ifids, c.Dealloc)
 	}
@@ -505,7 +503,7 @@ func (s *AlgoFast) CleanSteadyResv(c sibra.CleanParams) {
 	}
 }
 
-func (s *AlgoFast) cleanIfInfo(ifids sibra.IFTuple, bps sbresv.Bps) {
+func (s *AlgoFast) cleanIfInfo(ifids sbalgo.IFTuple, bps sibra.Bps) {
 	err := s.Infos[ifids.InIfid].Ingress.Dealloc(bps)
 	if assert.On {
 		assert.Must(err == nil, "Error during ingress info cleanup")
@@ -520,7 +518,7 @@ func (s *AlgoFast) cleanIfInfo(ifids sibra.IFTuple, bps sbresv.Bps) {
 	}
 }
 
-func (s *AlgoFast) getDemState(src addr.IA, ifids sibra.IFTuple) *demState {
+func (s *AlgoFast) getDemState(src addr.IA, ifids sbalgo.IFTuple) *demState {
 	return &demState{
 		src:          src,
 		ifids:        ifids,
@@ -546,7 +544,7 @@ func (s *AlgoFast) updateTransitMap(dem *demState) {
 	}
 }
 
-func (s *AlgoFast) nextTransDemDiff(ifids sibra.IFTuple, dem *demState) float64 {
+func (s *AlgoFast) nextTransDemDiff(ifids sbalgo.IFTuple, dem *demState) float64 {
 	var currAdjSrcDem, nextAdjSrcDem float64
 	inCap := s.Infos[ifids.InIfid].Ingress.Total
 	egCap := s.Infos[ifids.EgIfid].Egress.Total
@@ -556,7 +554,7 @@ func (s *AlgoFast) nextTransDemDiff(ifids sibra.IFTuple, dem *demState) float64 
 	return capTemp - capCurr
 }
 
-func (s *AlgoFast) nextAdjSrcDem(inCap, egCap sbresv.Bps, ifids sibra.IFTuple,
+func (s *AlgoFast) nextAdjSrcDem(inCap, egCap sibra.Bps, ifids sbalgo.IFTuple,
 	dem *demState) (float64, float64) {
 	currSrcDem := s.SourceMap[dem.src].SrcDemand[ifids]
 	var next float64
@@ -592,14 +590,14 @@ func (s *AlgoFast) updateTransitAllocMap(dem *demState) {
 	}
 }
 
-func (s *AlgoFast) nextTransAllocDiff(ifids sibra.IFTuple, dem *demState) float64 {
+func (s *AlgoFast) nextTransAllocDiff(ifids sbalgo.IFTuple, dem *demState) float64 {
 	var currScaledSrcAlloc, nextScaledSrcAlloc float64
 	egCap := s.Infos[ifids.EgIfid].Egress.Total
 	currScaledSrcAlloc, nextScaledSrcAlloc = s.nextScaledSrcAlloc(egCap, ifids, dem)
 	return nextScaledSrcAlloc - currScaledSrcAlloc
 }
 
-func (s *AlgoFast) nextScaledSrcAlloc(egCap sbresv.Bps, ifids sibra.IFTuple,
+func (s *AlgoFast) nextScaledSrcAlloc(egCap sibra.Bps, ifids sbalgo.IFTuple,
 	dem *demState) (float64, float64) {
 	currSrcAlloc := s.SourceMap[dem.src].SrcAlloc[ifids]
 	var next float64

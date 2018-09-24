@@ -22,12 +22,13 @@ import (
 	"crypto/aes"
 
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/util"
 )
 
 const (
 	// maxPathIDsLen is the maximum space required to write all path ids.
-	maxPathIDsLen = 3*SteadyIDLen + EphemIDLen
+	maxPathIDsLen = 3*sibra.SteadyIDLen + sibra.EphemIDLen
 	// upadded is the unpadded input length for SIBRA opaque field MAC
 	// computation. Sum of len(Ingress), len(Egress), len(Info), maxPathIDsLen,
 	// len(pathLens), len(prev sof).
@@ -86,7 +87,7 @@ func NewSOFieldFromRaw(b common.RawBytes) (*SOField, error) {
 	return sof, nil
 }
 
-func (s *SOField) Verify(mac hash.Hash, info *Info, ids []ID, pLens []uint8,
+func (s *SOField) Verify(mac hash.Hash, info *Info, ids []sibra.ID, pLens []uint8,
 	sof common.RawBytes) error {
 
 	if mac, err := s.CalcMac(mac, info, ids, pLens, sof); err != nil {
@@ -97,7 +98,7 @@ func (s *SOField) Verify(mac hash.Hash, info *Info, ids []ID, pLens []uint8,
 	return nil
 }
 
-func (s *SOField) SetMac(mac hash.Hash, info *Info, ids []ID, pLens []uint8,
+func (s *SOField) SetMac(mac hash.Hash, info *Info, ids []sibra.ID, pLens []uint8,
 	sof common.RawBytes) error {
 
 	tag, err := s.CalcMac(mac, info, ids, pLens, sof)
@@ -108,7 +109,7 @@ func (s *SOField) SetMac(mac hash.Hash, info *Info, ids []ID, pLens []uint8,
 	return nil
 }
 
-func (s *SOField) CalcMac(mac hash.Hash, info *Info, ids []ID, pLens []uint8,
+func (s *SOField) CalcMac(mac hash.Hash, info *Info, ids []sibra.ID, pLens []uint8,
 	sof common.RawBytes) (common.RawBytes, error) {
 
 	if info.FailHop != 0 {

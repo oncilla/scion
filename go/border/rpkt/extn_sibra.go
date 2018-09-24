@@ -19,6 +19,7 @@ import (
 
 	"github.com/scionproto/scion/go/border/rcmn"
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
@@ -55,11 +56,11 @@ func rSibraExtnFromRaw(rp *RtrPkt, start, end int) (*rSibraExtn, error) {
 func (s *rSibraExtn) parseResvIDs() {
 	off, end := 0, common.ExtnFirstLineLen
 	if !s.Steady {
-		off, end = end, end+sbresv.EphemIDLen
+		off, end = end, end+sibra.EphemIDLen
 		s.ParseID(s.raw[off:end])
 	}
 	for i := 0; i < s.TotalSteady; i++ {
-		off, end = end, end+sbresv.SteadyIDLen
+		off, end = end, end+sibra.SteadyIDLen
 		s.ParseID(s.raw[off:end])
 	}
 	s.offBlocks = s.ActiveBlockOff()

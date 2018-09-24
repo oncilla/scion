@@ -15,12 +15,11 @@
 package state
 
 import (
+	"sync"
 	"time"
 
-	"sync"
-
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 type BWProvider struct {
@@ -56,7 +55,7 @@ func (b *BWProvider) Alloc(bw uint64) (uint64, bool) {
 // AllocExpiring tries allocating expiring bandwidth. If successful it returns the
 // allocated value and true. If Unsuccessful it returns the max value and false.
 // An error is thrown if the expTick is outside the range of the dealloc ring.
-func (b *BWProvider) AllocExpiring(bw uint64, expTick sbresv.Tick) (uint64, bool, error) {
+func (b *BWProvider) AllocExpiring(bw uint64, expTick sibra.Tick) (uint64, bool, error) {
 	b.Lock()
 	defer b.Unlock()
 	bw, ok := b.alloc(bw, time.Now())
@@ -70,7 +69,7 @@ func (b *BWProvider) AllocExpiring(bw uint64, expTick sbresv.Tick) (uint64, bool
 	return bw, true, nil
 }
 
-func (b *BWProvider) ExchangeExpiring(newBw, oldBw uint64, newTick, oldTick sbresv.Tick) (
+func (b *BWProvider) ExchangeExpiring(newBw, oldBw uint64, newTick, oldTick sibra.Tick) (
 	uint64, bool, error) {
 
 	b.Lock()
@@ -119,7 +118,7 @@ func (b *BWProvider) Dealloc(bw uint64) error {
 	return b.dealloc(bw)
 }
 
-func (b *BWProvider) DeallocExpiring(bw uint64, expTick sbresv.Tick) error {
+func (b *BWProvider) DeallocExpiring(bw uint64, expTick sibra.Tick) error {
 	b.Lock()
 	defer b.Unlock()
 	if err := b.deallocRing.unreserve(expTick, bw); err != nil {
@@ -130,7 +129,7 @@ func (b *BWProvider) DeallocExpiring(bw uint64, expTick sbresv.Tick) error {
 
 // UndoExchangeExpiring undoes the operations carried out by ExchangeExpiring. The parameters must
 // be the same as provided to ExchangeExpiring.
-func (b *BWProvider) UndoExchangeExpiring(newBw, oldBw uint64, newTick, oldTick sbresv.Tick) error {
+func (b *BWProvider) UndoExchangeExpiring(newBw, oldBw uint64, newTick, oldTick sibra.Tick) error {
 
 	b.Lock()
 	defer b.Unlock()
@@ -165,19 +164,19 @@ func (b *BWProvider) cleanUp(t time.Time) {
 	if b.deallocRing.freeRing == nil {
 		return
 	}
-	b.Reserved -= b.deallocRing.cleanUp(sbresv.TimeToTick(t))
+	b.Reserved -= b.deallocRing.cleanUp(sibra.TimeToTick(t))
 }
 
 type deallocRing struct {
 	// offset indicates the offset in the ring.
 	offset int
 	// currTick indicates the SIBRA tick offset points to.
-	currTick sbresv.Tick
+	currTick sibra.Tick
 	// freeRing indicates the amount of bandwidth that is freed at the respective SIBRA tick.
 	freeRing []uint64
 }
 
-func (r *deallocRing) cleanUp(newCurr sbresv.Tick) (dealloc uint64) {
+func (r *deallocRing) cleanUp(newCurr sibra.Tick) (dealloc uint64) {
 	diff := newCurr.Sub(r.currTick)
 	if diff < 1 {
 		return 0
@@ -193,7 +192,7 @@ func (r *deallocRing) cleanUp(newCurr sbresv.Tick) (dealloc uint64) {
 	return dealloc
 }
 
-func (r *deallocRing) reserve(deallocTick sbresv.Tick, bw uint64) error {
+func (r *deallocRing) reserve(deallocTick sibra.Tick, bw uint64) error {
 	off, err := r.tickOffset(deallocTick)
 	if err != nil {
 		return err
@@ -202,7 +201,7 @@ func (r *deallocRing) reserve(deallocTick sbresv.Tick, bw uint64) error {
 	return nil
 }
 
-func (r *deallocRing) unreserve(deallocTick sbresv.Tick, bw uint64) error {
+func (r *deallocRing) unreserve(deallocTick sibra.Tick, bw uint64) error {
 	off, err := r.tickOffset(deallocTick)
 	if err != nil {
 		return err
@@ -215,7 +214,7 @@ func (r *deallocRing) unreserve(deallocTick sbresv.Tick, bw uint64) error {
 	return nil
 }
 
-func (r *deallocRing) exchange(newTick, oldTick sbresv.Tick, newBw, oldBw uint64) error {
+func (r *deallocRing) exchange(newTick, oldTick sibra.Tick, newBw, oldBw uint64) error {
 	newOff, err := r.tickOffset(newTick)
 	if err != nil {
 		return err
@@ -230,7 +229,7 @@ func (r *deallocRing) exchange(newTick, oldTick sbresv.Tick, newBw, oldBw uint64
 	return nil
 }
 
-func (r *deallocRing) tickOffset(deallocTick sbresv.Tick) (int, error) {
+func (r *deallocRing) tickOffset(deallocTick sibra.Tick) (int, error) {
 	diff := deallocTick.Sub(r.currTick)
 	if diff > len(r.freeRing) {
 		return 0, common.NewBasicError("Dealloc tick to far in future", nil,

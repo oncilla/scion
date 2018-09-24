@@ -23,7 +23,7 @@ import (
 	"github.com/scionproto/scion/go/lib/spkt"
 	"github.com/scionproto/scion/go/lib/topology"
 	"github.com/scionproto/scion/go/sibra_srv/conf"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 )
 
 func Forward(pkt *conf.ExtPkt) error {
@@ -87,7 +87,7 @@ func GetSibraExtn(pkt *spkt.ScnPkt) (common.ExtnBase, error) {
 
 // GetResvIfids returns the interfaces in the direction of the reservation.
 // This is independent of the direction of travel of the packet.
-func GetResvIfids(base *sbextn.Base, pkt *spkt.ScnPkt) (sibra.IFTuple, error) {
+func GetResvIfids(base *sbextn.Base, pkt *spkt.ScnPkt) (sbalgo.IFTuple, error) {
 	ifids, err := GetPktIfids(base, pkt)
 	if !base.Forward {
 		return ifids.Reverse(), err
@@ -98,26 +98,26 @@ func GetResvIfids(base *sbextn.Base, pkt *spkt.ScnPkt) (sibra.IFTuple, error) {
 // GetPktIfids returns the interfaces in the direction of travel of the packet.
 // InIfid corresponds to the interface where the packet entered the AS.
 // EgIfid where it leaves the AS.
-func GetPktIfids(b *sbextn.Base, pkt *spkt.ScnPkt) (sibra.IFTuple, error) {
+func GetPktIfids(b *sbextn.Base, pkt *spkt.ScnPkt) (sbalgo.IFTuple, error) {
 	if b.Setup {
 		return getPktIfidsSetup(pkt)
 	}
 	return getPktIfids(b)
 }
 
-func getPktIfidsSetup(pkt *spkt.ScnPkt) (sibra.IFTuple, error) {
+func getPktIfidsSetup(pkt *spkt.ScnPkt) (sbalgo.IFTuple, error) {
 	if pkt.Path == nil {
-		return sibra.IFTuple{}, common.NewBasicError("Path is nil", nil)
+		return sbalgo.IFTuple{}, common.NewBasicError("Path is nil", nil)
 	}
 	info, err := pkt.Path.GetInfoField(pkt.Path.InfOff)
 	if err != nil {
-		return sibra.IFTuple{}, err
+		return sbalgo.IFTuple{}, err
 	}
 	hopF, err := pkt.Path.GetHopField(pkt.Path.HopOff)
 	if err != nil {
-		return sibra.IFTuple{}, err
+		return sbalgo.IFTuple{}, err
 	}
-	ifids := sibra.IFTuple{
+	ifids := sbalgo.IFTuple{
 		InIfid: hopF.ConsIngress,
 		EgIfid: hopF.ConsEgress,
 	}
@@ -127,9 +127,9 @@ func getPktIfidsSetup(pkt *spkt.ScnPkt) (sibra.IFTuple, error) {
 	return ifids, nil
 }
 
-func getPktIfids(ext *sbextn.Base) (sibra.IFTuple, error) {
+func getPktIfids(ext *sbextn.Base) (sbalgo.IFTuple, error) {
 	sof := ext.GetCurrBlock().SOFields[ext.RelSOFIdx]
-	ifids := sibra.IFTuple{
+	ifids := sbalgo.IFTuple{
 		InIfid: sof.Ingress,
 		EgIfid: sof.Egress,
 	}

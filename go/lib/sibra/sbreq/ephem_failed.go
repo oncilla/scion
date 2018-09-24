@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
@@ -50,11 +51,11 @@ var _ Request = (*EphemReq)(nil)
 type EphemFailed struct {
 	*Base
 	// ReqID is the requested ephemeral reservation id set in setup requests.
-	ReqID sbresv.ID
+	ReqID sibra.ID
 	// Info is the requested reservation info.
 	Info *sbresv.Info
 	// Offers contains the offered bandwidth classes.
-	Offers []sbresv.BwCls
+	Offers []sibra.BwCls
 	// FailCode indicates why the reservation failed.
 	FailCode FailCode
 	// LineLen contains the line length of the header. This is done to avoid
@@ -80,7 +81,7 @@ func EphemFailedFromBase(b *Base, raw common.RawBytes, numHops int) (*EphemFaile
 	}
 	min := offEphemId + common.LineLen
 	if b.Type == REphmSetup {
-		min += sbresv.EphemIDLen
+		min += sibra.EphemIDLen
 	}
 	if len(raw) < min {
 		return nil, common.NewBasicError("Invalid ephemeral reservation reply length", nil,
@@ -90,28 +91,28 @@ func EphemFailedFromBase(b *Base, raw common.RawBytes, numHops int) (*EphemFaile
 		return nil, common.NewBasicError("Invalid ephemeral reservation reply length", nil,
 			"expected", int(raw[offEphmLen])*common.LineLen, "actual", len(raw))
 	}
-	var reqID sbresv.ID
+	var reqID sibra.ID
 	off, end := 0, offEphemId
 	if b.Type == REphmSetup {
-		off, end = end, end+sbresv.EphemIDLen
-		reqID = sbresv.ID(raw[off:end])
+		off, end = end, end+sibra.EphemIDLen
+		reqID = sibra.ID(raw[off:end])
 	}
 	off, end = end, end+sbresv.InfoLen
 	rep := &EphemFailed{
 		Base:     b,
 		ReqID:    reqID,
 		Info:     sbresv.NewInfoFromRaw(raw[off:end]),
-		Offers:   make([]sbresv.BwCls, numHops),
+		Offers:   make([]sibra.BwCls, numHops),
 		FailCode: FailCode(raw[offFailCode]),
 		LineLen:  raw[offEphmLen],
 	}
 	for i := 0; i < numHops; i++ {
-		rep.Offers[i] = sbresv.BwCls(raw[end+i])
+		rep.Offers[i] = sibra.BwCls(raw[end+i])
 	}
 	return rep, nil
 }
 
-func (r *EphemFailed) EphemID() sbresv.ID {
+func (r *EphemFailed) EphemID() sibra.ID {
 	return r.ReqID
 }
 
@@ -139,7 +140,7 @@ func (r *EphemFailed) Write(b common.RawBytes) error {
 	b[offEphmLen] = r.LineLen
 	off, end := 0, offEphemId
 	if r.Type == REphmSetup {
-		off, end = end, end+sbresv.EphemIDLen
+		off, end = end, end+sibra.EphemIDLen
 		r.ReqID.Write(b[off:end])
 	}
 	off, end = end, end+r.Info.Len()

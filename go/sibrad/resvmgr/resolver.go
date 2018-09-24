@@ -15,17 +15,16 @@
 package resvmgr
 
 import (
-	"time"
-
 	"sync"
+	"time"
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/infra/messenger"
 	"github.com/scionproto/scion/go/lib/log"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/spath/spathmeta"
 )
@@ -138,7 +137,7 @@ func (r *resolver) setupEphem(entry *resvEntry, p *spathmeta.AppPath, sb *snet.A
 	}
 	// FIXME(roosd): based on rtt class.
 	timeout := time.Second
-	ephemId := sbresv.NewEphemIDRand(snet.DefNetwork.IA().A)
+	ephemId := sibra.NewEphemIDRand(snet.DefNetwork.IA().A)
 	reqstr := &EphemSetup{
 		reserver: &reserver{
 			reqstr: &reqstr{
@@ -241,7 +240,7 @@ func (r *resolver) handleSetupTimeout(entry *resvEntry, request *sbreq.EphemReq,
 
 func (r *resolver) needRenewal(ext *sbextn.Ephemeral, entry *resvEntry) bool {
 	// FIXME(roosd): Add check if bandwidth class is as close to desired as possible.
-	return !sbresv.CurrentTick().Add(1).Time().Before(ext.Expiry())
+	return !sibra.CurrentTick().Add(1).Time().Before(ext.Expiry())
 }
 
 func (r *resolver) renewEphem(entry *resvEntry, ext *sbextn.Ephemeral,
@@ -253,7 +252,7 @@ func (r *resolver) renewEphem(entry *resvEntry, ext *sbextn.Ephemeral,
 	}
 	// FIXME(roosd): based on rtt class.
 	timeout := time.Second
-	ephemId := sbresv.NewEphemIDRand(snet.DefNetwork.IA().A)
+	ephemId := sibra.NewEphemIDRand(snet.DefNetwork.IA().A)
 	reqstr := &EphemRenew{
 		reserver: &reserver{
 			reqstr: &reqstr{
@@ -294,7 +293,7 @@ func (r *resolver) renewEphem(entry *resvEntry, ext *sbextn.Ephemeral,
 	return false, nil
 }
 
-func (r *resolver) handleRenewTimeout(entry *resvEntry, ephemId sbresv.ID,
+func (r *resolver) handleRenewTimeout(entry *resvEntry, ephemId sibra.ID,
 	request *sbreq.EphemReq, dstIa addr.IA, sb *snet.Addr) {
 
 	entry.Lock()
@@ -455,7 +454,7 @@ func (r *resolver) quit(err error) {
 	}
 }
 
-func maxBwCls(a, b sbresv.BwCls) sbresv.BwCls {
+func maxBwCls(a, b sibra.BwCls) sibra.BwCls {
 	if a > b {
 		return a
 	}

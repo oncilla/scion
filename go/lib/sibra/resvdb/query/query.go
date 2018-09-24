@@ -18,7 +18,7 @@ import (
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 type IntfSpec struct {
@@ -27,7 +27,7 @@ type IntfSpec struct {
 }
 
 type Params struct {
-	ResvID   sbresv.ID
+	ResvID   sibra.ID
 	SegID    common.RawBytes
 	Intfs    []*IntfSpec
 	StartsAt []addr.IA

@@ -18,15 +18,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/proto"
 )
 
 var _ proto.Cerealizable = (*Instruct)(nil)
 
 type Instruct struct {
-	ResvID     sbresv.ID `capnp:"id"`
-	RawExpTime uint64    `capnp:"expTime"`
+	ResvID     sibra.ID `capnp:"id"`
+	RawExpTime uint64   `capnp:"expTime"`
 }
 
 func (i *Instruct) ExpTime() time.Time {

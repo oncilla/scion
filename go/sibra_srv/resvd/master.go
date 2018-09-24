@@ -15,17 +15,16 @@
 package resvd
 
 import (
+	"bufio"
 	"fmt"
 	"sort"
 	"sync"
 	"time"
 
-	"bufio"
-
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/log"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/sibra_srv/conf"
 )
 
@@ -54,7 +53,7 @@ func (r *ResvMaster) Run() {
 }
 
 func (r *ResvMaster) Handle(pkt *conf.ExtPkt) error {
-	var idx sbresv.Index
+	var idx sibra.Index
 	switch e := pkt.Steady.Request.(type) {
 	case *sbreq.SteadySucc:
 		idx = e.Block.Info.Index
@@ -118,7 +117,7 @@ func (r *ResvMaster) writeResvs(writer bufio.Writer, stop <-chan struct{}) {
 			return
 		case <-ticker.C:
 			m := conf.Get().LocalResvs.Items()
-			ids := []sbresv.ID(nil)
+			ids := []sibra.ID(nil)
 			set := map[string]struct{}{}
 			for _, v := range m {
 				if _, ok := set[string(v.Object.(*conf.LocalResvEntry).Id)]; ok {

@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sibra
+package sbalgo
 
 import (
 	"sync"
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
@@ -52,22 +53,22 @@ type AdmParams struct {
 type CleanParams struct {
 	Ifids   IFTuple
 	Src     addr.IA
-	Id      sbresv.ID
-	LastMax sbresv.Bps
-	CurrMax sbresv.Bps
-	Dealloc sbresv.Bps
+	Id      sibra.ID
+	LastMax sibra.Bps
+	CurrMax sibra.Bps
+	Dealloc sibra.Bps
 	Remove  bool
 }
 
 type SteadyAdm interface {
 	AdmitSteady(params AdmParams) (SteadyRes, error)
-	Ideal(params AdmParams) sbresv.Bps
-	Available(ifids IFTuple, id sbresv.ID) sbresv.Bps
-	AddSteadyResv(params AdmParams, alloc sbresv.BwCls) error
+	Ideal(params AdmParams) sibra.Bps
+	Available(ifids IFTuple, id sibra.ID) sibra.Bps
+	AddSteadyResv(params AdmParams, alloc sibra.BwCls) error
 	CleanSteadyResv(c CleanParams)
-	PromoteToSOFCreated(ifids IFTuple, id sbresv.ID, info *sbresv.Info) error
-	PromoteToPending(ifids IFTuple, id sbresv.ID, c *sbreq.ConfirmIndex) error
-	PromoteToActive(ifids IFTuple, id sbresv.ID, info *sbresv.Info, c *sbreq.ConfirmIndex) error
+	PromoteToSOFCreated(ifids IFTuple, id sibra.ID, info *sbresv.Info) error
+	PromoteToPending(ifids IFTuple, id sibra.ID, c *sbreq.ConfirmIndex) error
+	PromoteToActive(ifids IFTuple, id sibra.ID, info *sbresv.Info, c *sbreq.ConfirmIndex) error
 }
 
 type EphemAdm interface {
@@ -79,20 +80,20 @@ type EphemAdm interface {
 
 type SteadyRes struct {
 	// AllocBw is the allocated bandwidth
-	AllocBw sbresv.BwCls
+	AllocBw sibra.BwCls
 	// MaxBw is the maximum acceptable bandwidth in case admission fails.
-	MaxBw sbresv.BwCls
+	MaxBw sibra.BwCls
 	// MinBw is the minimal acceptable bandwidth in case admission fails.
-	MinBw sbresv.BwCls
+	MinBw sibra.BwCls
 	// Accepted indicates if the reservation is accepted.
 	Accepted bool
 }
 
 type EphemRes struct {
 	// AllocBw is the allocated bandwidth
-	AllocBw sbresv.BwCls
+	AllocBw sibra.BwCls
 	// MaxBw is the maximum acceptable bandwidth in case admission fails.
-	MaxBw sbresv.BwCls
+	MaxBw sibra.BwCls
 	// FailCode indicates the failure code when admission fails.
 	FailCode sbreq.FailCode
 }

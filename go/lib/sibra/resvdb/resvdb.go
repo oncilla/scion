@@ -17,10 +17,10 @@ package resvdb
 import (
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/resvdb/conn"
 	"github.com/scionproto/scion/go/lib/sibra/resvdb/query"
 	"github.com/scionproto/scion/go/lib/sibra/resvdb/sqlite"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
 type DB struct {
@@ -51,7 +51,7 @@ func (db *DB) Insert(bmeta *sibra_mgmt.BlockMeta) (int, error) {
 
 // Delete deletes a steady reservation with a given ID. Returns the number of deleted
 // reservations (0 or 1).
-func (db *DB) Delete(resvID sbresv.ID) (int, error) {
+func (db *DB) Delete(resvID sibra.ID) (int, error) {
 	return db.conn.Delete(resvID)
 }
 

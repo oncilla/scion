@@ -16,13 +16,13 @@ package state
 
 import (
 	"sync"
-
 	"time"
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 )
 
 const (
@@ -40,13 +40,13 @@ type SteadyResvEntry struct {
 	// Src is the reservation source AS.
 	Src addr.IA
 	// Id is the reservation ID.
-	Id sbresv.ID
+	Id sibra.ID
 	// Ifids TODO(roosd)
-	Ifids sibra.IFTuple
+	Ifids sbalgo.IFTuple
 	// Indexes TODO(roosd)
-	Indexes [sbresv.NumIndexes]*SteadyResvIdx
+	Indexes [sibra.NumIndexes]*SteadyResvIdx
 	// SibraAlgo TODO(roosd)
-	SibraAlgo sibra.Algo
+	SibraAlgo sbalgo.Algo
 	// TODO(roosd)
 	BaseResv *SteadyResvEntry
 	// TODO(roosd)
@@ -56,11 +56,11 @@ type SteadyResvEntry struct {
 	// TODO(roosd)
 	EphemResvMap *EphemResvMap
 	// TODO(roosd)
-	Allocated sbresv.Bps
+	Allocated sibra.Bps
 	// TODO(roosd)
-	LastMax sbresv.Bps
+	LastMax sibra.Bps
 	// TODO(roosd)
-	ActiveIndex sbresv.Index
+	ActiveIndex sibra.Index
 	// Cache indicates if the Allocated and LastMax are cached.
 	Cache bool
 }
@@ -88,7 +88,7 @@ func (e *SteadyResvEntry) cleanUp(now time.Time) {
 		// If this is a telescoped extension, bandwidth has not been actually reserved
 		return
 	}
-	var lastMax, allocDiff sbresv.Bps
+	var lastMax, allocDiff sibra.Bps
 	// Cache values in order for the fast SIBRA algorithm to work.
 	if e.Cache {
 		lastMax = e.LastMax
@@ -105,7 +105,7 @@ func (e *SteadyResvEntry) cleanUp(now time.Time) {
 	if (!e.Cache || lastMax == e.LastMax && allocDiff == 0) && !e.expired(now) {
 		return
 	}
-	c := sibra.CleanParams{
+	c := sbalgo.CleanParams{
 		Ifids:   e.Ifids,
 		Id:      e.Id,
 		Src:     e.Src,
@@ -144,7 +144,7 @@ func (e *SteadyResvEntry) AddIdx(idx *SteadyResvIdx) error {
 	return nil
 }
 
-func (e *SteadyResvEntry) DelIdx(idx sbresv.Index) {
+func (e *SteadyResvEntry) DelIdx(idx sibra.Index) {
 	e.Lock()
 	defer e.Unlock()
 	e.Indexes[idx] = nil
@@ -157,7 +157,7 @@ func (e *SteadyResvEntry) PromoteToSOFCreated(info *sbresv.Info) error {
 	if sub == nil {
 		return common.NewBasicError(IndexNonExistent, nil, "idx", info.Index)
 	}
-	if sub.State != sbresv.StateTemp {
+	if sub.State != sibra.StateTemp {
 		return common.NewBasicError(InvalidState, nil,
 			"id", e.Id, "idx", info.Index, "state", sub.State)
 	}
@@ -178,28 +178,28 @@ func (e *SteadyResvEntry) PromoteToSOFCreated(info *sbresv.Info) error {
 	return nil
 }
 
-func (e *SteadyResvEntry) PromoteToPending(idx sbresv.Index) error {
+func (e *SteadyResvEntry) PromoteToPending(idx sibra.Index) error {
 	e.Lock()
 	defer e.Unlock()
 	sub := e.Indexes[idx]
 	if sub == nil {
 		return common.NewBasicError(IndexNonExistent, nil, "idx", idx)
 	}
-	if sub.State == sbresv.StatePending {
+	if sub.State == sibra.StatePending {
 		// FIXME(roosd): Limit the time this is possible
 		return nil
 	}
-	if sub.State != sbresv.StateTemp {
+	if sub.State != sibra.StateTemp {
 		return common.NewBasicError(InvalidState, nil, "idx", idx, "state", sub.State)
 	}
 	if !sub.SOFCreated {
 		return common.NewBasicError("SOF not created yet", nil, "idx", idx)
 	}
-	sub.State = sbresv.StatePending
+	sub.State = sibra.StatePending
 	return nil
 }
 
-func (e *SteadyResvEntry) PromoteToActive(idx sbresv.Index, info *sbresv.Info) error {
+func (e *SteadyResvEntry) PromoteToActive(idx sibra.Index, info *sbresv.Info) error {
 	e.Lock()
 	defer e.Unlock()
 	sub := e.Indexes[idx]
@@ -209,12 +209,12 @@ func (e *SteadyResvEntry) PromoteToActive(idx sbresv.Index, info *sbresv.Info) e
 	if !sub.Info.Eq(info) {
 		return common.NewBasicError(InfoNotMatching, nil, "expected", sub.Info, "actual", info)
 	}
-	if sub.State == sbresv.StateActive {
+	if sub.State == sibra.StateActive {
 		return nil
 	}
-	if sub.State != sbresv.StatePending {
+	if sub.State != sibra.StatePending {
 		return common.NewBasicError(InvalidState, nil,
-			"expected", sbresv.StatePending, "actual", sub.State)
+			"expected", sibra.StatePending, "actual", sub.State)
 	}
 	if e.EphemeralBW != nil {
 		// Adjust ephemeral bandwidth if possible.
@@ -225,28 +225,28 @@ func (e *SteadyResvEntry) PromoteToActive(idx sbresv.Index, info *sbresv.Info) e
 		e.setEphemeralBWProvider(sub.Info.BwCls)
 	}
 	// Remove invalidated indexes.
-	for i := e.ActiveIndex; i != idx; i = (i + 1) % sbresv.NumIndexes {
+	for i := e.ActiveIndex; i != idx; i = (i + 1) % sibra.NumIndexes {
 		e.Indexes[i] = nil
 	}
 	e.ActiveIndex = idx
-	sub.State = sbresv.StateActive
+	sub.State = sibra.StateActive
 	e.cleanUp(time.Now())
 	return nil
 }
 
-func (e *SteadyResvEntry) setEphemeralBWProvider(cls sbresv.BwCls) {
+func (e *SteadyResvEntry) setEphemeralBWProvider(cls sibra.BwCls) {
 	e.EphemeralBW = &BWProvider{
 		Total: uint64(cls.Bps()),
 		deallocRing: deallocRing{
-			currTick: sbresv.CurrentTick(),
-			freeRing: make([]uint64, sbresv.MaxEphemTicks*2),
+			currTick: sibra.CurrentTick(),
+			freeRing: make([]uint64, sibra.MaxEphemTicks*2),
 		},
 	}
 }
 
 // TODO(roosd): promote void -> need to take care of ephemeral BW provider
 
-func (e *SteadyResvEntry) CollectTempIndex(idx sbresv.Index) error {
+func (e *SteadyResvEntry) CollectTempIndex(idx sibra.Index) error {
 	e.SibraAlgo.Lock()
 	defer e.SibraAlgo.Unlock()
 	e.Lock()
@@ -255,7 +255,7 @@ func (e *SteadyResvEntry) CollectTempIndex(idx sbresv.Index) error {
 	if sub == nil {
 		return common.NewBasicError(IndexNonExistent, nil, "idx", idx)
 	}
-	if sub.State != sbresv.StateTemp {
+	if sub.State != sibra.StateTemp {
 		return common.NewBasicError(InvalidState, nil, "idx", idx, "state", sub.State)
 	}
 	e.Indexes[idx] = nil
@@ -263,14 +263,14 @@ func (e *SteadyResvEntry) CollectTempIndex(idx sbresv.Index) error {
 	return nil
 }
 
-func (e *SteadyResvEntry) MaxBw() sbresv.Bps {
+func (e *SteadyResvEntry) MaxBw() sibra.Bps {
 	e.Lock()
 	defer e.Unlock()
 	return e.maxBw(time.Now())
 }
 
-func (e *SteadyResvEntry) maxBw(now time.Time) sbresv.Bps {
-	var max sbresv.BwCls
+func (e *SteadyResvEntry) maxBw(now time.Time) sibra.Bps {
+	var max sibra.BwCls
 	for _, v := range e.Indexes {
 		if v != nil && v.Active(now) && v.MaxBW > max {
 			max = v.MaxBW
@@ -279,14 +279,14 @@ func (e *SteadyResvEntry) maxBw(now time.Time) sbresv.Bps {
 	return max.Bps()
 }
 
-func (e *SteadyResvEntry) AllocBw() sbresv.Bps {
+func (e *SteadyResvEntry) AllocBw() sibra.Bps {
 	e.Lock()
 	defer e.Unlock()
 	return e.allocBw(time.Now())
 }
 
-func (e *SteadyResvEntry) allocBw(now time.Time) sbresv.Bps {
-	var max sbresv.BwCls
+func (e *SteadyResvEntry) allocBw(now time.Time) sibra.Bps {
+	var max sibra.BwCls
 	for _, v := range e.Indexes {
 		if v != nil && v.Active(now) && v.Info.BwCls > max {
 			max = v.Info.BwCls
@@ -310,12 +310,12 @@ func (e *SteadyResvEntry) NonVoidIdxs(now time.Time) int {
 type SteadyResvIdx struct {
 	// TODO(roosd): comments
 	Info       sbresv.Info
-	MinBW      sbresv.BwCls
-	MaxBW      sbresv.BwCls
-	State      sbresv.State
+	MinBW      sibra.BwCls
+	MaxBW      sibra.BwCls
+	State      sibra.State
 	SOFCreated bool
 }
 
 func (i *SteadyResvIdx) Active(t time.Time) bool {
-	return (i.State != sbresv.StateVoid) && (t.Before(i.Info.ExpTick.Time()))
+	return (i.State != sibra.StateVoid) && (t.Before(i.Info.ExpTick.Time()))
 }

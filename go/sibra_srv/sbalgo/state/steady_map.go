@@ -15,17 +15,16 @@
 package state
 
 import (
+	"runtime"
 	"sync"
 	"time"
 
-	"runtime"
-
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 const (
-	SteadyResvGCInterval = sbresv.TickInterval * time.Second
+	SteadyResvGCInterval = sibra.TickInterval * time.Second
 	keysSize             = 100
 )
 
@@ -73,7 +72,7 @@ func NewSteadyResvMap(state *SibraState) *SteadyResvMap {
 }
 
 // Add assumes caller holds lock for sibraState.
-func (m *steadyResvMap) Add(id sbresv.ID, entry *SteadyResvEntry) error {
+func (m *steadyResvMap) Add(id sibra.ID, entry *SteadyResvEntry) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	_, ok := m.get(id)
@@ -85,13 +84,13 @@ func (m *steadyResvMap) Add(id sbresv.ID, entry *SteadyResvEntry) error {
 }
 
 // Get assumes caller holds lock for sibraState.
-func (m *steadyResvMap) Get(id sbresv.ID) (*SteadyResvEntry, bool) {
+func (m *steadyResvMap) Get(id sibra.ID) (*SteadyResvEntry, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.get(id)
 }
 
-func (m *steadyResvMap) get(id sbresv.ID) (*SteadyResvEntry, bool) {
+func (m *steadyResvMap) get(id sibra.ID) (*SteadyResvEntry, bool) {
 	r, ok := m.resvs[string([]byte(id))]
 	if !ok {
 		return nil, false
@@ -120,7 +119,7 @@ func (m *steadyResvMap) NonVoidIdxs() int {
 }
 
 // Delete assumes caller holds lock for sibraState.
-func (m *steadyResvMap) Delete(id sbresv.ID) {
+func (m *steadyResvMap) Delete(id sibra.ID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	r, ok := m.resvs[string([]byte(id))]
@@ -205,7 +204,7 @@ type steadyJanitor struct {
 
 func (j *steadyJanitor) Run(m *steadyResvMap) {
 	j.stop = make(chan bool)
-	time.Sleep((sbresv.CurrentTick() + 1).Time().Sub(time.Now()))
+	time.Sleep((sibra.CurrentTick() + 1).Time().Sub(time.Now()))
 	ticker := time.NewTicker(j.Interval)
 	for {
 		select {

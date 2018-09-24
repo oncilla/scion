@@ -20,7 +20,7 @@ import (
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/spath/spathmeta"
 )
 
@@ -36,11 +36,11 @@ type ResvsMap map[string]*Resv
 type Resv struct {
 	IA            addr.IA
 	PathPredicate *spathmeta.PathPredicate
-	PathType      sbresv.PathType
-	MinSize       sbresv.BwCls
-	DesiredSize   sbresv.BwCls
-	MaxSize       sbresv.BwCls
-	RatioClass    sbresv.RatioCls
+	PathType      sibra.PathType
+	MinSize       sibra.BwCls
+	DesiredSize   sibra.BwCls
+	MaxSize       sibra.BwCls
+	RatioClass    sibra.RatioCls
 }
 
 func ReservationsFromRaw(b common.RawBytes) (ResvsMap, error) {

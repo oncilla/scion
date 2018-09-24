@@ -12,21 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sibra
+package sbcreate
 
 import (
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
 // NesSteadySetup creates a steady extension with the provided setup request.
-func NewSteadySetup(r *sbreq.SteadyReq, id sbresv.ID) (*sbextn.Steady, error) {
-	if len(id) != sbresv.SteadyIDLen {
+func NewSteadySetup(r *sbreq.SteadyReq, id sibra.ID) (*sbextn.Steady, error) {
+	if len(id) != sibra.SteadyIDLen {
 		return nil, common.NewBasicError(sbextn.InvalidSteadyIdLen, nil,
-			"expected", sbresv.SteadyIDLen, "actual", len(id))
+			"expected", sibra.SteadyIDLen, "actual", len(id))
 	}
 	id = id.Copy()
 	pathLen := uint8(len(r.OfferFields))
@@ -36,9 +37,9 @@ func NewSteadySetup(r *sbreq.SteadyReq, id sbresv.ID) (*sbextn.Steady, error) {
 			Setup:        true,
 			Forward:      !r.Info.PathType.Reversed(),
 			IsRequest:    true,
-			Version:      sbextn.Version,
+			Version:      sibra.Version,
 			PathLens:     []uint8{pathLen, 0, 0},
-			IDs:          []sbresv.ID{id},
+			IDs:          []sibra.ID{id},
 			ReqID:        id,
 			ActiveBlocks: make([]*sbresv.Block, 0),
 			Request:      r,
@@ -53,10 +54,10 @@ func NewSteadySetup(r *sbreq.SteadyReq, id sbresv.ID) (*sbextn.Steady, error) {
 
 // NewSteadyUse creates a steady extension which can be used to send steady traffic
 // based on the provided block.
-func NewSteadyUse(id sbresv.ID, block *sbresv.Block, fwd bool) (*sbextn.Steady, error) {
-	if len(id) != sbresv.SteadyIDLen {
+func NewSteadyUse(id sibra.ID, block *sbresv.Block, fwd bool) (*sbextn.Steady, error) {
+	if len(id) != sibra.SteadyIDLen {
 		return nil, common.NewBasicError(sbextn.InvalidSteadyIdLen, nil,
-			"expected", sbresv.SteadyIDLen, "actual", len(id))
+			"expected", sibra.SteadyIDLen, "actual", len(id))
 	}
 	if block == nil {
 		return nil, common.NewBasicError("Block must not be nil", nil)
@@ -68,9 +69,9 @@ func NewSteadyUse(id sbresv.ID, block *sbresv.Block, fwd bool) (*sbextn.Steady, 
 			Steady:       true,
 			Forward:      fwd,
 			IsRequest:    false,
-			Version:      sbextn.Version,
+			Version:      sibra.Version,
 			PathLens:     []uint8{pathLen, 0, 0},
-			IDs:          []sbresv.ID{id},
+			IDs:          []sibra.ID{id},
 			ReqID:        id,
 			ActiveBlocks: []*sbresv.Block{block.Copy()},
 		},
@@ -84,21 +85,21 @@ func NewSteadyUse(id sbresv.ID, block *sbresv.Block, fwd bool) (*sbextn.Steady, 
 
 // NewEphemUse creates an ephemeral extension which can be used to send ephemeral
 // traffic based on the provided reservation block.
-func NewEphemUse(ids []sbresv.ID, pathLens []uint8, block *sbresv.Block,
+func NewEphemUse(ids []sibra.ID, pathLens []uint8, block *sbresv.Block,
 	fwd bool) (*sbextn.Ephemeral, error) {
 
 	if len(ids) < 2 {
 		return nil, common.NewBasicError("Invalid number of provided reservation ids", nil,
 			"min", 2, "actual", len(ids))
 	}
-	if len(ids[0]) != sbresv.EphemIDLen {
+	if len(ids[0]) != sibra.EphemIDLen {
 		return nil, common.NewBasicError(sbextn.InvalidEphemIdLen, nil,
-			"expected", sbresv.EphemIDLen, "actual", len(ids[0]))
+			"expected", sibra.EphemIDLen, "actual", len(ids[0]))
 	}
 	for i := 1; i < len(ids); i++ {
-		if len(ids[i]) != sbresv.SteadyIDLen {
+		if len(ids[i]) != sibra.SteadyIDLen {
 			return nil, common.NewBasicError(sbextn.InvalidSteadyIdLen, nil, "i", i,
-				"expected", sbresv.SteadyIDLen, "actual", len(ids[0]))
+				"expected", sibra.SteadyIDLen, "actual", len(ids[0]))
 		}
 	}
 	if block == nil {
@@ -107,14 +108,14 @@ func NewEphemUse(ids []sbresv.ID, pathLens []uint8, block *sbresv.Block,
 	if len(pathLens) != 3 {
 		return nil, common.NewBasicError("Invalid pathLens format", nil, "pathLens", pathLens)
 	}
-	idsCopy := make([]sbresv.ID, len(ids))
+	idsCopy := make([]sibra.ID, len(ids))
 	for i := range idsCopy {
 		idsCopy[i] = ids[i].Copy()
 	}
 	ext := &sbextn.Ephemeral{
 		Base: &sbextn.Base{
 			Forward:      fwd,
-			Version:      sbextn.Version,
+			Version:      sibra.Version,
 			PathLens:     []uint8{pathLens[0], pathLens[1], pathLens[2]},
 			IDs:          idsCopy,
 			ReqID:        idsCopy[0],
@@ -141,7 +142,7 @@ func NewSteadyBE(bmetas []*sibra_mgmt.BlockMeta, fwd bool) (*sbextn.Steady, erro
 	}
 	pathLen := 0
 	pathLens := make([]uint8, 3)
-	ids := make([]sbresv.ID, 0, 3)
+	ids := make([]sibra.ID, 0, 3)
 	blocks := make([]*sbresv.Block, 0, 3)
 	for i, bmeta := range bmetas {
 		pathLens[i] = uint8(bmeta.Block.NumHops())
@@ -155,7 +156,7 @@ func NewSteadyBE(bmetas []*sibra_mgmt.BlockMeta, fwd bool) (*sbextn.Steady, erro
 			BestEffort:   true,
 			Forward:      fwd,
 			IsRequest:    false,
-			Version:      sbextn.Version,
+			Version:      sibra.Version,
 			PathLens:     pathLens,
 			IDs:          ids,
 			ActiveBlocks: blocks,
@@ -172,7 +173,7 @@ func validatePath(bmetas []*sibra_mgmt.BlockMeta) error {
 	if len(bmetas) < 1 || len(bmetas) > 3 {
 		return common.NewBasicError("Invalid number of blocks", nil, "num", len(bmetas))
 	}
-	prevPT := sbresv.PathTypeNone
+	prevPT := sibra.PathTypeNone
 	prevIA := bmetas[0].StartIA()
 	for i, v := range bmetas {
 		if !v.Block.Info.PathType.ValidAfter(prevPT) {

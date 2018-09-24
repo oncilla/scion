@@ -27,6 +27,7 @@ import (
 	"github.com/scionproto/scion/go/lib/l4"
 	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/sibra"
+	"github.com/scionproto/scion/go/lib/sibra/sbcreate"
 	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
@@ -48,8 +49,8 @@ type repMaster interface {
 }
 
 type notifyKey struct {
-	Id      sbresv.ID
-	Idx     sbresv.Index
+	Id      sibra.ID
+	Idx     sibra.Index
 	ReqType sbreq.RequestType
 }
 
@@ -78,8 +79,8 @@ type reqstr struct {
 	succFunc func(reqstrI)
 	failFunc func(reqstrI)
 
-	id         sbresv.ID
-	idx        sbresv.Index
+	id         sibra.ID
+	idx        sibra.Index
 	entry      *resvEntry
 	repMaster  repMaster
 	msgr       *messenger.Messenger
@@ -171,7 +172,7 @@ func (r *reqstr) sendRequest(ext common.Extension) error {
 
 type reserver struct {
 	*reqstr
-	bwCls sbresv.BwCls
+	bwCls sibra.BwCls
 }
 
 func (r *reserver) OnError(err error) {
@@ -196,9 +197,9 @@ func (s *EphemSetup) PrepareRequest() (common.Extension, error) {
 	steady = steady.Copy().(*sbextn.Steady)
 
 	info := &sbresv.Info{
-		ExpTick:  sbresv.CurrentTick() + sbresv.MaxEphemTicks,
+		ExpTick:  sibra.CurrentTick() + sibra.MaxEphemTicks,
 		BwCls:    s.bwCls,
-		PathType: sbresv.PathTypeEphemeral,
+		PathType: sibra.PathTypeEphemeral,
 		RttCls:   10, // FIXME(roosd): add RTT classes based on steady
 	}
 	ephemReq := sbreq.NewEphemReq(sbreq.REphmSetup, s.id, info, steady.TotalHops)
@@ -223,9 +224,9 @@ func (s *EphemSetup) HandleRep(ext common.Extension) (bool, error) {
 	defer s.entry.Unlock()
 	switch r := ext.(*sbextn.Steady).Request.(type) {
 	case *sbreq.EphemReq:
-		ids := []sbresv.ID{r.ReqID}
+		ids := []sibra.ID{r.ReqID}
 		ids = append(ids, steady.IDs...)
-		ephem, err := sibra.NewEphemUse(ids, steady.PathLens, r.Block, true)
+		ephem, err := sbcreate.NewEphemUse(ids, steady.PathLens, r.Block, true)
 		if err != nil {
 			return false, err
 		}
@@ -260,9 +261,9 @@ func (r *EphemRenew) PrepareRequest() (common.Extension, error) {
 	}
 	r.id = ephem.IDs[0]
 	info := &sbresv.Info{
-		ExpTick:  sbresv.CurrentTick() + sbresv.MaxEphemTicks,
+		ExpTick:  sibra.CurrentTick() + sibra.MaxEphemTicks,
 		BwCls:    r.bwCls,
-		PathType: sbresv.PathTypeEphemeral,
+		PathType: sibra.PathTypeEphemeral,
 		RttCls:   10, // FIXME(roosd): add RTT classes based on steady
 		Index:    r.idx,
 	}
@@ -288,7 +289,7 @@ func (r *EphemRenew) HandleRep(ext common.Extension) (bool, error) {
 	defer r.entry.Unlock()
 	switch request := ext.(*sbextn.Ephemeral).Request.(type) {
 	case *sbreq.EphemReq:
-		ephem, err := sibra.NewEphemUse(ephem.IDs, ephem.PathLens, request.Block, true)
+		ephem, err := sbcreate.NewEphemUse(ephem.IDs, ephem.PathLens, request.Block, true)
 		if err != nil {
 			return false, err
 		}

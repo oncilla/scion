@@ -18,7 +18,7 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 var _ Request = (*ConfirmIndex)(nil)
@@ -28,9 +28,9 @@ var _ Request = (*ConfirmIndex)(nil)
 type ConfirmIndex struct {
 	*Base
 	// Idx is the index to be confirmed.
-	Idx sbresv.Index
+	Idx sibra.Index
 	// State is the state which the index shall be confirmed to.
-	State sbresv.State
+	State sibra.State
 	// numHops keeps track of how many hops there are.
 	numHops int
 }
@@ -49,15 +49,15 @@ func ConfirmIndexFromBase(b *Base, raw common.RawBytes, numHops int) (*ConfirmIn
 	}
 	c := &ConfirmIndex{
 		Base:    b,
-		Idx:     sbresv.Index(raw[BaseLen]),
-		State:   sbresv.State(raw[BaseLen+1]),
+		Idx:     sibra.Index(raw[BaseLen]),
+		State:   sibra.State(raw[BaseLen+1]),
 		numHops: numHops,
 	}
 	return c, nil
 }
 
-func NewConfirmIndex(numHops int, idx sbresv.Index, state sbresv.State) (*ConfirmIndex, error) {
-	if state != sbresv.StatePending && state != sbresv.StateActive {
+func NewConfirmIndex(numHops int, idx sibra.Index, state sibra.State) (*ConfirmIndex, error) {
+	if state != sibra.StatePending && state != sibra.StateActive {
 		return nil, common.NewBasicError("Invalid confirm index state", nil, "state", state)
 	}
 	c := &ConfirmIndex{

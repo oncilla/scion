@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
@@ -43,7 +44,7 @@ var _ Request = (*EphemReq)(nil)
 type EphemReq struct {
 	*Base
 	// ReqID is the requested ephemeral reservation id set in setup requests.
-	ReqID sbresv.ID
+	ReqID sibra.ID
 	// Block is the reservation block.
 	Block *sbresv.Block
 }
@@ -66,7 +67,7 @@ func EphemReqFromBase(b *Base, raw common.RawBytes, numHops int) (*EphemReq, err
 	// Make sure we don't panic when accessing raw[end:]
 	min := offEphemId + common.LineLen
 	if b.Type == REphmSetup {
-		min += sbresv.EphemIDLen
+		min += sibra.EphemIDLen
 	}
 	if len(raw) < min {
 		return nil, common.NewBasicError("Invalid ephemeral reservation request length", nil,
@@ -77,8 +78,8 @@ func EphemReqFromBase(b *Base, raw common.RawBytes, numHops int) (*EphemReq, err
 	}
 	off, end := 0, offEphemId
 	if b.Type == REphmSetup {
-		off, end = end, end+sbresv.EphemIDLen
-		resvReq.ReqID = sbresv.ID(raw[off:end])
+		off, end = end, end+sibra.EphemIDLen
+		resvReq.ReqID = sibra.ID(raw[off:end])
 	}
 	var err error
 	resvReq.Block, err = sbresv.BlockFromRaw(raw[end:], numHops)
@@ -88,7 +89,7 @@ func EphemReqFromBase(b *Base, raw common.RawBytes, numHops int) (*EphemReq, err
 	return resvReq, nil
 }
 
-func NewEphemReq(t RequestType, id sbresv.ID, info *sbresv.Info, numhops int) *EphemReq {
+func NewEphemReq(t RequestType, id sibra.ID, info *sbresv.Info, numhops int) *EphemReq {
 	c := &EphemReq{
 		Base: &Base{
 			Type:     t,
@@ -100,7 +101,7 @@ func NewEphemReq(t RequestType, id sbresv.ID, info *sbresv.Info, numhops int) *E
 	return c
 }
 
-func (r *EphemReq) Fail(code FailCode, maxBw sbresv.BwCls, failHop int) *EphemFailed {
+func (r *EphemReq) Fail(code FailCode, maxBw sibra.BwCls, failHop int) *EphemFailed {
 	rep := &EphemFailed{
 		Base: &Base{
 			Type:     r.Type,
@@ -110,7 +111,7 @@ func (r *EphemReq) Fail(code FailCode, maxBw sbresv.BwCls, failHop int) *EphemFa
 		LineLen:  uint8(r.Len() / common.LineLen),
 		ReqID:    r.ReqID,
 		Info:     r.Block.Info.Copy(),
-		Offers:   make([]sbresv.BwCls, r.NumHops()),
+		Offers:   make([]sibra.BwCls, r.NumHops()),
 	}
 	rep.Info.FailHop = uint8(failHop)
 	rep.Info.BwCls = maxBw
@@ -120,7 +121,7 @@ func (r *EphemReq) Fail(code FailCode, maxBw sbresv.BwCls, failHop int) *EphemFa
 	return rep
 }
 
-func (r *EphemReq) EphemID() sbresv.ID {
+func (r *EphemReq) EphemID() sibra.ID {
 	return r.ReqID
 }
 
@@ -135,7 +136,7 @@ func (r *EphemReq) NumHops() int {
 func (r *EphemReq) Len() int {
 	l := offEphemId
 	if r.Type == REphmSetup {
-		l += sbresv.EphemIDLen
+		l += sibra.EphemIDLen
 	}
 	return l + r.Block.Len()
 }
@@ -150,7 +151,7 @@ func (r *EphemReq) Write(b common.RawBytes) error {
 	}
 	off, end := 0, offEphemId
 	if r.Type == REphmSetup {
-		off, end = end, end+sbresv.EphemIDLen
+		off, end = end, end+sibra.EphemIDLen
 		r.ReqID.Write(b[off:end])
 	}
 	if err := r.Block.Write(b[end:]); err != nil {

@@ -20,7 +20,7 @@ import (
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/sibra_srv/conf"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 	"github.com/scionproto/scion/go/sibra_srv/util"
 )
 
@@ -111,7 +111,7 @@ func AdmitSteadyResv(pkt *conf.ExtPkt, r *sbreq.SteadyReq) error {
 		return err
 	}
 	log.Debug("Admitting steady reservation", "id", pkt.Steady.ReqID, "ifids", ifids)
-	params := sibra.AdmParams{
+	params := sbalgo.AdmParams{
 		Ifids: ifids,
 		Extn:  pkt.Steady,
 		Req:   r,

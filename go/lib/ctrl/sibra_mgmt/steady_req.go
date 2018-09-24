@@ -19,7 +19,7 @@ import (
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/proto"
 )
 
@@ -29,7 +29,7 @@ type SteadyReq struct {
 	RawStartIA addr.IAInt `capnp:"startIA"`
 	RawEndIA   addr.IAInt `capnp:"endIA"`
 	SegID      common.RawBytes
-	PathType   sbresv.PathType
+	PathType   sibra.PathType
 }
 
 func (s *SteadyReq) StartIA() addr.IA {

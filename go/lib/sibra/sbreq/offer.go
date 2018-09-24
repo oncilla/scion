@@ -18,7 +18,7 @@ import (
 	"fmt"
 
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 const (
@@ -40,18 +40,18 @@ const (
 //  - AllocBw + MinBw is unset.
 type Offer struct {
 	// AllocBw is the allocated bandwidth class.
-	AllocBw sbresv.BwCls
+	AllocBw sibra.BwCls
 	// MinBw is the minimum bandwidth class.
-	MinBw sbresv.BwCls
+	MinBw sibra.BwCls
 	// MaxBw is the maximum bandwidth class.
-	MaxBw sbresv.BwCls
+	MaxBw sibra.BwCls
 }
 
 func NewOfferFromRaw(raw common.RawBytes) *Offer {
 	return &Offer{
-		AllocBw: sbresv.BwCls(raw[offsetOfferAlloc]),
-		MinBw:   sbresv.BwCls(raw[offsetOfferMin]),
-		MaxBw:   sbresv.BwCls(raw[offsetOfferMax]),
+		AllocBw: sibra.BwCls(raw[offsetOfferAlloc]),
+		MinBw:   sibra.BwCls(raw[offsetOfferMin]),
+		MaxBw:   sibra.BwCls(raw[offsetOfferMax]),
 	}
 }
 

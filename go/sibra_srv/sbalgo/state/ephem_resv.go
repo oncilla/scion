@@ -20,13 +20,14 @@ import (
 	"time"
 
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 )
 
 type EphemResvEntry struct {
 	sync.RWMutex
 	// Id is the reservation ID.
-	Id sbresv.ID
+	Id sibra.ID
 	// ActiveIdx is the currently active index.
 	ActiveIdx EphemResvIdx
 	// LastIdx is the index before the currently active index.
@@ -68,9 +69,9 @@ func (e *EphemResvEntry) ReplaceIdx(newInfo, lastInfo *sbresv.Info, alloc uint64
 		return sbresv.Info{}, common.NewBasicError("Last index does not match", nil,
 			"expected", e.LastIdx.Info, "actual", *lastInfo)
 	}
-	if (e.LastIdx.Info.Index+1)%sbresv.NumIndexes != newInfo.Index {
+	if (e.LastIdx.Info.Index+1)%sibra.NumIndexes != newInfo.Index {
 		return sbresv.Info{}, common.NewBasicError("Non consecutive index", nil,
-			"expected", (e.LastIdx.Info.Index+1)%sbresv.NumIndexes, "actual", newInfo.Index)
+			"expected", (e.LastIdx.Info.Index+1)%sibra.NumIndexes, "actual", newInfo.Index)
 	}
 	replaced := e.ActiveIdx.Info
 	e.ActiveIdx = EphemResvIdx{

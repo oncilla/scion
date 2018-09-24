@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sbalgo
+package impl
 
 import (
 	"fmt"
@@ -20,15 +20,15 @@ import (
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/topology"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 	"github.com/scionproto/scion/go/sibra_srv/sbalgo/state"
 )
 
-var _ sibra.Algo = (*AlgoSlow)(nil)
-var _ sibra.SteadyAdm = (*AlgoSlow)(nil)
-var _ sibra.EphemAdm = (*AlgoSlow)(nil)
+var _ sbalgo.Algo = (*AlgoSlow)(nil)
+var _ sbalgo.SteadyAdm = (*AlgoSlow)(nil)
+var _ sbalgo.EphemAdm = (*AlgoSlow)(nil)
 
 // AlgoSlow implements the SIBRA algorithm.
 type AlgoSlow struct {
@@ -53,24 +53,24 @@ func NewSibraSlow(topo *topology.Topo, matrix state.Matrix) (*AlgoSlow, error) {
 
 // AdmitSteady does executes the SIBRA algorithm. The provided interfaces must be
 // in the reservation direction.
-func (s *AlgoSlow) AdmitSteady(params sibra.AdmParams) (sibra.SteadyRes, error) {
+func (s *AlgoSlow) AdmitSteady(params sbalgo.AdmParams) (sbalgo.SteadyRes, error) {
 	return admitSteady(s, params, s.Topo)
 }
 
 // Available calculates the available bandwidth on the out interface. It assumes
 // the caller holds the lock over the receiver.
-func (s *AlgoSlow) Available(ifids sibra.IFTuple, id sbresv.ID) sbresv.Bps {
+func (s *AlgoSlow) Available(ifids sbalgo.IFTuple, id sibra.ID) sibra.Bps {
 	// Entry for eg is guaranteed to exist
 	in := s.Infos[ifids.InIfid].Ingress.Total - s.reqResIn(ifids.InIfid, id)
 	eg := s.Infos[ifids.EgIfid].Egress.Total - s.reqResEg(ifids.EgIfid, id)
-	return sbresv.Bps(float64(minBps(in, eg)) * s.Delta)
+	return sibra.Bps(float64(minBps(in, eg)) * s.Delta)
 }
 
-func (s *AlgoSlow) reqResIn(in common.IFIDType, id sbresv.ID) sbresv.Bps {
-	var sum sbresv.Bps
+func (s *AlgoSlow) reqResIn(in common.IFIDType, id sibra.ID) sibra.Bps {
+	var sum sibra.Bps
 	for _, ids := range s.SrcToIds {
 		for i := range ids {
-			entry, ok := s.SteadyMap.Get(sbresv.ID(i))
+			entry, ok := s.SteadyMap.Get(sibra.ID(i))
 			if !ok || entry.Ifids.InIfid != in || entry.Id.Eq(id) {
 				continue
 			}
@@ -80,11 +80,11 @@ func (s *AlgoSlow) reqResIn(in common.IFIDType, id sbresv.ID) sbresv.Bps {
 	return sum
 }
 
-func (s *AlgoSlow) reqResEg(eg common.IFIDType, id sbresv.ID) sbresv.Bps {
-	var sum sbresv.Bps
+func (s *AlgoSlow) reqResEg(eg common.IFIDType, id sibra.ID) sibra.Bps {
+	var sum sibra.Bps
 	for _, ids := range s.SrcToIds {
 		for i := range ids {
-			entry, ok := s.SteadyMap.Get(sbresv.ID(i))
+			entry, ok := s.SteadyMap.Get(sibra.ID(i))
 			if !ok || entry.Ifids.EgIfid != eg || entry.Id.Eq(id) {
 				continue
 			}
@@ -96,14 +96,14 @@ func (s *AlgoSlow) reqResEg(eg common.IFIDType, id sbresv.ID) sbresv.Bps {
 
 // Ideal calculates the ideal bandwidth the reservation should get. It assumes
 // the caller holds the lock over the receiver.
-func (s *AlgoSlow) Ideal(p sibra.AdmParams) sbresv.Bps {
+func (s *AlgoSlow) Ideal(p sbalgo.AdmParams) sibra.Bps {
 	outCap := float64(s.Infos[p.Ifids.EgIfid].Egress.Total)
 	tubeRatio := s.tubeRatio(p.Ifids, p)
 	linkRatio := s.linkRatio(p)
-	return sbresv.Bps(outCap * tubeRatio * linkRatio)
+	return sibra.Bps(outCap * tubeRatio * linkRatio)
 }
 
-func (s *AlgoSlow) tubeRatio(ifids sibra.IFTuple, p sibra.AdmParams) float64 {
+func (s *AlgoSlow) tubeRatio(ifids sbalgo.IFTuple, p sbalgo.AdmParams) float64 {
 	transDem := s.transDem(ifids, p)
 	sum := transDem
 	tup := ifids
@@ -122,7 +122,7 @@ func (s *AlgoSlow) tubeRatio(ifids sibra.IFTuple, p sibra.AdmParams) float64 {
 	panic(fmt.Sprintf("Sum of transit demand between (%d,%d) is 0", ifids.InIfid, ifids.EgIfid))
 }
 
-func (s *AlgoSlow) transDem(ifids sibra.IFTuple, p sibra.AdmParams) float64 {
+func (s *AlgoSlow) transDem(ifids sbalgo.IFTuple, p sbalgo.AdmParams) float64 {
 	var sum float64
 	for src := range s.SrcToIds {
 		sum += s.adjSrcDem(src, ifids, p)
@@ -133,15 +133,15 @@ func (s *AlgoSlow) transDem(ifids sibra.IFTuple, p sibra.AdmParams) float64 {
 	return sum
 }
 
-func (s *AlgoSlow) adjSrcDem(src addr.IA, ifids sibra.IFTuple, p sibra.AdmParams) float64 {
+func (s *AlgoSlow) adjSrcDem(src addr.IA, ifids sbalgo.IFTuple, p sbalgo.AdmParams) float64 {
 	return s.scalingFactor(src, ifids, p) * float64(s.srcDem(src, ifids, p))
 }
 
-func (s *AlgoSlow) scalingFactor(src addr.IA, ifids sibra.IFTuple, p sibra.AdmParams) float64 {
+func (s *AlgoSlow) scalingFactor(src addr.IA, ifids sbalgo.IFTuple, p sbalgo.AdmParams) float64 {
 	return math.Min(s.inScalFactr(src, ifids.InIfid, p), s.egScalFactr(src, ifids.EgIfid, p))
 }
 
-func (s *AlgoSlow) inScalFactr(src addr.IA, in common.IFIDType, p sibra.AdmParams) float64 {
+func (s *AlgoSlow) inScalFactr(src addr.IA, in common.IFIDType, p sbalgo.AdmParams) float64 {
 	capIn := s.Infos[in].Ingress.Total
 	inDem := s.inDem(src, in, p)
 	if inDem <= 0 {
@@ -150,7 +150,7 @@ func (s *AlgoSlow) inScalFactr(src addr.IA, in common.IFIDType, p sibra.AdmParam
 	return float64(minBps(capIn, inDem)) / float64(inDem)
 }
 
-func (s *AlgoSlow) egScalFactr(src addr.IA, eg common.IFIDType, p sibra.AdmParams) float64 {
+func (s *AlgoSlow) egScalFactr(src addr.IA, eg common.IFIDType, p sbalgo.AdmParams) float64 {
 	capEg := s.Infos[eg].Egress.Total
 	egDem := s.egDem(src, eg, p)
 	if egDem <= 0 {
@@ -159,9 +159,9 @@ func (s *AlgoSlow) egScalFactr(src addr.IA, eg common.IFIDType, p sibra.AdmParam
 	return float64(minBps(capEg, egDem)) / float64(egDem)
 }
 
-func (s *AlgoSlow) inDem(src addr.IA, in common.IFIDType, p sibra.AdmParams) sbresv.Bps {
-	var sum sbresv.Bps
-	ifids := sibra.IFTuple{
+func (s *AlgoSlow) inDem(src addr.IA, in common.IFIDType, p sbalgo.AdmParams) sibra.Bps {
+	var sum sibra.Bps
+	ifids := sbalgo.IFTuple{
 		InIfid: in,
 	}
 	for eg := range s.Infos {
@@ -171,9 +171,9 @@ func (s *AlgoSlow) inDem(src addr.IA, in common.IFIDType, p sibra.AdmParams) sbr
 	return sum
 }
 
-func (s *AlgoSlow) egDem(src addr.IA, eg common.IFIDType, p sibra.AdmParams) sbresv.Bps {
-	var sum sbresv.Bps
-	ifids := sibra.IFTuple{
+func (s *AlgoSlow) egDem(src addr.IA, eg common.IFIDType, p sbalgo.AdmParams) sibra.Bps {
+	var sum sibra.Bps
+	ifids := sbalgo.IFTuple{
 		EgIfid: eg,
 	}
 	for in := range s.Infos {
@@ -183,10 +183,10 @@ func (s *AlgoSlow) egDem(src addr.IA, eg common.IFIDType, p sibra.AdmParams) sbr
 	return sum
 }
 
-func (s *AlgoSlow) srcDem(src addr.IA, ifids sibra.IFTuple, p sibra.AdmParams) sbresv.Bps {
-	var sum sbresv.Bps
+func (s *AlgoSlow) srcDem(src addr.IA, ifids sbalgo.IFTuple, p sbalgo.AdmParams) sibra.Bps {
+	var sum sibra.Bps
 	for id := range s.SrcToIds[src] {
-		sum += s.reqDem(sbresv.ID(id), ifids, p)
+		sum += s.reqDem(sibra.ID(id), ifids, p)
 	}
 	// Consider the reservation if it does not exist yet
 	// in the source to id mapping
@@ -198,7 +198,7 @@ func (s *AlgoSlow) srcDem(src addr.IA, ifids sibra.IFTuple, p sibra.AdmParams) s
 	return sum
 }
 
-func (s *AlgoSlow) reqDem(id sbresv.ID, ifids sibra.IFTuple, p sibra.AdmParams) sbresv.Bps {
+func (s *AlgoSlow) reqDem(id sibra.ID, ifids sbalgo.IFTuple, p sbalgo.AdmParams) sibra.Bps {
 	capIn := s.Infos[ifids.InIfid].Ingress.Total
 	capEg := s.Infos[ifids.EgIfid].Egress.Total
 	// In case the calculation is done for the id which is currently
@@ -216,7 +216,7 @@ func (s *AlgoSlow) reqDem(id sbresv.ID, ifids sibra.IFTuple, p sibra.AdmParams) 
 	return minBps(minBps(capIn, capEg), entry.MaxBw())
 }
 
-func (s *AlgoSlow) linkRatio(p sibra.AdmParams) float64 {
+func (s *AlgoSlow) linkRatio(p sbalgo.AdmParams) float64 {
 	minMax := s.prevBw(p)
 	if minMax <= 0 {
 		return 0
@@ -224,9 +224,9 @@ func (s *AlgoSlow) linkRatio(p sibra.AdmParams) float64 {
 	nom := s.egScalFactr(p.Src, p.Ifids.EgIfid, p) * float64(minMax.Bps())
 	sum := nom
 	for src, ids := range s.SrcToIds {
-		var srcAlloc sbresv.Bps
+		var srcAlloc sibra.Bps
 		for i := range ids {
-			entry, ok := s.SteadyMap.Get(sbresv.ID(i))
+			entry, ok := s.SteadyMap.Get(sibra.ID(i))
 			if ok && entry.Ifids == p.Ifids && !entry.Id.Eq(p.Extn.ReqID) {
 				srcAlloc += entry.AllocBw()
 			}
@@ -241,7 +241,7 @@ func (s *AlgoSlow) linkRatio(p sibra.AdmParams) float64 {
 
 // AddSteadyResv adds a steady reservation given the parameters and the allocated
 // bandwidth. It assumes that the caller holds the lock over the receiver.
-func (s *AlgoSlow) AddSteadyResv(p sibra.AdmParams, alloc sbresv.BwCls) error {
+func (s *AlgoSlow) AddSteadyResv(p sbalgo.AdmParams, alloc sibra.BwCls) error {
 	// Add index and reserve the required bandwidth.
 	info := *p.Req.Info
 	info.BwCls = alloc
@@ -255,7 +255,7 @@ func (s *AlgoSlow) AddSteadyResv(p sibra.AdmParams, alloc sbresv.BwCls) error {
 	if !ok {
 		if p.Req.Info.Index != 0 {
 			return common.NewBasicError("Invalid initial index", nil,
-				"expected", sbresv.Index(0), "actual", p.Req.Info.Index)
+				"expected", sibra.Index(0), "actual", p.Req.Info.Index)
 		}
 		stEntry = &state.SteadyResvEntry{
 			Src:          p.Src,
@@ -298,7 +298,7 @@ func (s *AlgoSlow) addIndex(e *state.SteadyResvEntry, idx *state.SteadyResvIdx) 
 // CleanSteadyResv updates the state bases on the given values. This function
 // is called from the steady map when a reservation index needs to be cleaned
 // up.
-func (s *AlgoSlow) CleanSteadyResv(c sibra.CleanParams) {
+func (s *AlgoSlow) CleanSteadyResv(c sbalgo.CleanParams) {
 
 	// adjust source map
 	if _, ok := s.SrcToIds[c.Src]; !ok {

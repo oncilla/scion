@@ -22,8 +22,8 @@ import (
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
 	"github.com/scionproto/scion/go/lib/pathmgr"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/spath/spathmeta"
 	"github.com/scionproto/scion/go/sibrad/syncresv"
 )
@@ -53,15 +53,15 @@ type ephemMeta struct {
 	// TODO(roosd)
 	timestamp time.Time
 	// TODO(roosd)
-	minBwCls sbresv.BwCls
+	minBwCls sibra.BwCls
 	// TODO(roosd)
-	maxBwCls sbresv.BwCls
+	maxBwCls sibra.BwCls
 	// TODO(roosd)
 	state state
 	// TODO(roosd)
 	lastFailCode sbreq.FailCode
 	// TODO(roosd)
-	lastMaxBW sbresv.BwCls
+	lastMaxBW sibra.BwCls
 }
 
 type resvEntry struct {
@@ -129,18 +129,18 @@ func newStore() *store {
 	return nil
 }*/
 
-func (c *store) getSteadyId(segId common.RawBytes) []sbresv.ID {
+func (c *store) getSteadyId(segId common.RawBytes) []sibra.ID {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	entry := c.segIdtoSteady[string(segId)]
-	list := make([]sbresv.ID, len(entry))
+	list := make([]sibra.ID, len(entry))
 	for k := range entry {
-		list = append(list, sbresv.ID(common.RawBytes(k)))
+		list = append(list, sibra.ID(common.RawBytes(k)))
 	}
 	return list
 }
 
-func (c *store) addSteadyId(segId common.RawBytes, steadyId sbresv.ID) {
+func (c *store) addSteadyId(segId common.RawBytes, steadyId sibra.ID) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	if entry := c.segIdtoSteady[string(segId)]; entry == nil {
@@ -149,13 +149,13 @@ func (c *store) addSteadyId(segId common.RawBytes, steadyId sbresv.ID) {
 	c.segIdtoSteady[string(segId)][string(common.RawBytes(steadyId))] = struct{}{}
 }
 
-func (c *store) removeSteadyId(segId common.RawBytes, steadyId sbresv.ID) {
+func (c *store) removeSteadyId(segId common.RawBytes, steadyId sibra.ID) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	delete(c.segIdtoSteady[string(segId)], string(common.RawBytes(steadyId)))
 }
 
-func (c *store) getSteadyMeta(steadyID sbresv.ID) *steadyMeta {
+func (c *store) getSteadyMeta(steadyID sibra.ID) *steadyMeta {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	return c.steadyToMeta[string(common.RawBytes(steadyID))]
@@ -167,7 +167,7 @@ func (c *store) addSteadyMeta(meta *steadyMeta) {
 	c.steadyToMeta[string(common.RawBytes(meta.Meta.Id))] = meta
 }
 
-func (c *store) removeSteadyMeta(steadyID sbresv.ID) {
+func (c *store) removeSteadyMeta(steadyID sibra.ID) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	delete(c.steadyToMeta, string(common.RawBytes(steadyID)))

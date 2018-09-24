@@ -16,15 +16,14 @@ package resvmgr
 
 import (
 	"context"
-	"time"
-
 	"fmt"
+	"time"
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
 	"github.com/scionproto/scion/go/lib/sibra"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra/sbcreate"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/spath"
 	"github.com/scionproto/scion/go/lib/spath/spathmeta"
@@ -38,7 +37,7 @@ func (r *resolver) resolveSteady(entry *resvEntry, path *spathmeta.AppPath) (boo
 	if err != nil {
 		return false, err
 	}
-	steadyExtn, err := sibra.NewSteadyBE(bmetas, true)
+	steadyExtn, err := sbcreate.NewSteadyBE(bmetas, true)
 	if err != nil {
 		return false, err
 	}
@@ -168,11 +167,11 @@ func (r *resolver) getSteadyReqs(path *spathmeta.AppPath) ([]*sibra_mgmt.SteadyR
 			// FIXME(roosd): support peering paths
 			return nil, common.NewBasicError("Peering links not supported yet", nil)
 		}
-		pt := sbresv.PathTypeUp
+		pt := sibra.PathTypeUp
 		if infos[i].ConsDir {
-			pt = sbresv.PathTypeDown
+			pt = sibra.PathTypeDown
 		} else if start != 0 {
-			pt = sbresv.PathTypeCore
+			pt = sibra.PathTypeCore
 		}
 		for k := range ifs {
 			ifs[k].RawIsdas = path.Entry.Path.Interfaces[start+k].RawIsdas

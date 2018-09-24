@@ -24,9 +24,9 @@ import (
 	"github.com/scionproto/scion/go/lib/hpkt"
 	"github.com/scionproto/scion/go/lib/infra"
 	"github.com/scionproto/scion/go/lib/log"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/spkt"
 )
@@ -97,7 +97,7 @@ func (h *ephemRepHandler) handle(saddr *snet.Addr, pld *sibra_mgmt.EphemRep) err
 }
 
 func (h *ephemRepHandler) getNotifyKey(base *sbextn.Base) (notifyKey, error) {
-	var idx sbresv.Index
+	var idx sibra.Index
 	switch e := base.Request.(type) {
 	case *sbreq.EphemReq:
 		idx = e.Block.Info.Index

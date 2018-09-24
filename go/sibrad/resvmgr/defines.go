@@ -24,7 +24,7 @@ import (
 	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/pathmgr"
 	"github.com/scionproto/scion/go/lib/sciond"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/spath/spathmeta"
 	"github.com/scionproto/scion/go/sibrad/syncresv"
@@ -58,8 +58,8 @@ type PathConf struct {
 type EphemConf struct {
 	*PathConf
 	Destination addr.HostAddr
-	MinBWCls    sbresv.BwCls
-	MaxBWCls    sbresv.BwCls
+	MinBWCls    sibra.BwCls
+	MaxBWCls    sibra.BwCls
 }
 
 // WatchState is the state for a reservation which is being watched.

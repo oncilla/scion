@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package sbalgo
+package impl
 
 import (
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/log"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/topology"
 	"github.com/scionproto/scion/go/proto"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 )
 
-func admitSteady(s sibra.Algo, p sibra.AdmParams, topo *topology.Topo) (sibra.SteadyRes, error) {
+func admitSteady(s sbalgo.Algo, p sbalgo.AdmParams, topo *topology.Topo) (sbalgo.SteadyRes, error) {
 	if err := validate(p, topo); err != nil {
-		return sibra.SteadyRes{}, common.NewBasicError("Unable to validate", err)
+		return sbalgo.SteadyRes{}, common.NewBasicError("Unable to validate", err)
 	}
 	s.Lock()
 	defer s.Unlock()
@@ -42,7 +42,7 @@ func admitSteady(s sibra.Algo, p sibra.AdmParams, topo *topology.Topo) (sibra.St
 	if avail > ideal {
 		avail = ideal
 	}
-	res := sibra.SteadyRes{
+	res := sbalgo.SteadyRes{
 		MaxBw: avail.ToBwCls(true),
 	}
 	if res.MaxBw < p.Req.MinBw || !p.Req.Accepted {
@@ -50,7 +50,7 @@ func admitSteady(s sibra.Algo, p sibra.AdmParams, topo *topology.Topo) (sibra.St
 	}
 	res.AllocBw = minBwCls(res.MaxBw, p.Req.Info.BwCls)
 	if err := s.AddSteadyResv(p, res.AllocBw); err != nil {
-		return sibra.SteadyRes{}, err
+		return sbalgo.SteadyRes{}, err
 	}
 	res.Accepted = true
 	// TODO(roosd): remove
@@ -60,13 +60,13 @@ func admitSteady(s sibra.Algo, p sibra.AdmParams, topo *topology.Topo) (sibra.St
 	return res, nil
 }
 
-func logInfo(m string, p sibra.AdmParams, avail, ideal sbresv.Bps, s sibra.Algo) {
+func logInfo(m string, p sbalgo.AdmParams, avail, ideal sibra.Bps, s sbalgo.Algo) {
 	log.Info(m, "id", p.Extn.ReqID, "\navail", avail, "ideal", ideal,
 		"req", p.Req.MaxBw.Bps(), "ifids", p.Ifids, "\nState", s)
 
 }
 
-func validate(params sibra.AdmParams, topo *topology.Topo) error {
+func validate(params sbalgo.AdmParams, topo *topology.Topo) error {
 	if err := validateIfids(params, topo); err != nil {
 		return err
 	}
@@ -76,7 +76,7 @@ func validate(params sibra.AdmParams, topo *topology.Topo) error {
 	return nil
 }
 
-func validateIfids(params sibra.AdmParams, topo *topology.Topo) error {
+func validateIfids(params sbalgo.AdmParams, topo *topology.Topo) error {
 	in, err := getLinkType(params.Ifids.InIfid, topo)
 	if err != nil {
 		return common.NewBasicError("Unable to find ingress ifid", err)
@@ -92,7 +92,7 @@ func validateIfids(params sibra.AdmParams, topo *topology.Topo) error {
 	return nil
 }
 
-func validateReq(params sibra.AdmParams, topo *topology.Topo) error {
+func validateReq(params sbalgo.AdmParams, topo *topology.Topo) error {
 	if params.Extn.Setup && params.Req.Info.Index != 0 {
 		return common.NewBasicError("Invalid initial index", nil, "idx", params.Req.Info.Index)
 	}
@@ -118,7 +118,7 @@ func getLinkType(ifid common.IFIDType, topo *topology.Topo) (proto.LinkType, err
 	return proto.LinkType_unset, common.NewBasicError("Interface not found", nil, "ifid", ifid)
 }
 
-func minBwCls(a, b sbresv.BwCls) sbresv.BwCls {
+func minBwCls(a, b sibra.BwCls) sibra.BwCls {
 	if a < b {
 		return a
 	}

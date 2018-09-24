@@ -24,12 +24,12 @@ import (
 	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/pathmgr"
 	"github.com/scionproto/scion/go/lib/pktcls"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/resvdb/query"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/spath/spathmeta"
 	"github.com/scionproto/scion/go/sibra_srv/conf"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo/impl"
 	"github.com/scionproto/scion/go/sibra_srv/sbalgo/state"
 )
 
@@ -38,10 +38,10 @@ import (
 var idSuffix uint32
 var idSuffixLock sync.Mutex
 
-func getID(config *conf.Conf) sbresv.ID {
+func getID(config *conf.Conf) sibra.ID {
 	idSuffixLock.Lock()
 	defer idSuffixLock.Unlock()
-	id := sbresv.NewSteadyID(config.PublicAddr.IA.A, idSuffix)
+	id := sibra.NewSteadyID(config.PublicAddr.IA.A, idSuffix)
 	idSuffix++
 	return id
 }
@@ -50,7 +50,7 @@ type Reserver struct {
 	sync.Mutex
 	log.Logger
 	resvKey   string
-	resvID    sbresv.ID
+	resvID    sibra.ID
 	syncPaths *pathmgr.SyncPaths
 	filter    *pktcls.ActionFilterPaths
 	pred      string
@@ -93,9 +93,9 @@ func (r *Reserver) run() error {
 	}
 	var e *state.SteadyResvEntry
 	switch algo := config.SibraAlgo.(type) {
-	case *sbalgo.AlgoFast:
+	case *impl.AlgoFast:
 		e, ok = algo.SteadyMap.Get(r.resvID)
-	case *sbalgo.AlgoSlow:
+	case *impl.AlgoSlow:
 		e, ok = algo.SteadyMap.Get(r.resvID)
 	}
 	if !ok || e.Expired(time.Now()) {
@@ -121,17 +121,17 @@ func (r *Reserver) isRecent(config *conf.Conf, e *state.SteadyResvEntry) bool {
 	e.RLock()
 	defer e.RUnlock()
 	idx := e.Indexes[e.ActiveIndex]
-	if idx == nil || idx.State != sbresv.StateActive {
+	if idx == nil || idx.State != sibra.StateActive {
 		return false
 	}
 	// XXX(roosd): Remove "false" for constant renewal requests
 	ia, _ := addr.IAFromString("2-ff00:0:222")
 	if ia.Eq(config.PublicAddr.IA) && false {
-		if time.Until(idx.Info.ExpTick.Time()) < (sbresv.MaxSteadyTicks-4)*sbresv.TickDuration {
+		if time.Until(idx.Info.ExpTick.Time()) < (sibra.MaxSteadyTicks-4)*sibra.TickDuration {
 			return false
 		}
 	}
-	if time.Until(idx.Info.ExpTick.Time()) < 5*sbresv.TickDuration {
+	if time.Until(idx.Info.ExpTick.Time()) < 5*sibra.TickDuration {
 		return false
 	}
 	return true
@@ -141,7 +141,7 @@ func (r *Reserver) tempExists(config *conf.Conf, e *state.SteadyResvEntry, res *
 	e.RLock()
 	defer e.RUnlock()
 	for _, idx := range e.Indexes {
-		if idx != nil && idx.State == sbresv.StateTemp {
+		if idx != nil && idx.State == sibra.StateTemp {
 			return true
 		}
 	}
@@ -154,9 +154,9 @@ func (r *Reserver) switchIndex(config *conf.Conf, e *state.SteadyResvEntry, res 
 	idx := e.Indexes[e.ActiveIndex]
 	if idx != nil {
 		loc := config.LocalResvs.Get(r.resvID, e.ActiveIndex)
-		failed := loc != nil && loc.State == sbresv.StatePending && idx.State == sbresv.StateActive
+		failed := loc != nil && loc.State == sibra.StatePending && idx.State == sibra.StateActive
 		// Activate initial index and failed attempts
-		if idx.State == sbresv.StatePending || failed {
+		if idx.State == sibra.StatePending || failed {
 			r.activateIdx(config, e.ActiveIndex)
 			return true
 		}
@@ -167,7 +167,7 @@ func (r *Reserver) switchIndex(config *conf.Conf, e *state.SteadyResvEntry, res 
 		if i == nil {
 			continue
 		}
-		if i.Active(now) && i.State == sbresv.StatePending {
+		if i.Active(now) && i.State == sibra.StatePending {
 			pending = append(pending, i)
 		}
 	}
@@ -187,7 +187,7 @@ func (r *Reserver) switchIndex(config *conf.Conf, e *state.SteadyResvEntry, res 
 	return true
 }
 
-func (r *Reserver) activateIdx(config *conf.Conf, idx sbresv.Index) {
+func (r *Reserver) activateIdx(config *conf.Conf, idx sibra.Index) {
 	r.Debug("Starting to activate index", "idx", idx)
 	e := config.LocalResvs.Get(r.resvID, idx)
 
@@ -203,7 +203,7 @@ func (r *Reserver) activateIdx(config *conf.Conf, idx sbresv.Index) {
 	meta.SetInterfaces(r.pathToIntfs(r.path, e.Block.Info.PathType))
 	c := &ConfirmIndex{
 		Reqstr: &Reqstr{
-			Logger: r.Logger.New("reqstr", "ConfirmIndex", "state", sbresv.StateActive,
+			Logger: r.Logger.New("reqstr", "ConfirmIndex", "state", sibra.StateActive,
 				"id", r.resvID, "idx", idx),
 			id:      r.resvID,
 			idx:     idx,
@@ -223,7 +223,7 @@ func (r *Reserver) activateIdx(config *conf.Conf, idx sbresv.Index) {
 				}
 			},
 		},
-		state: sbresv.StateActive,
+		state: sibra.StateActive,
 	}
 	go c.Run(c)
 }
@@ -289,11 +289,11 @@ func (r *Reserver) renewResv(config *conf.Conf, e *state.SteadyResvEntry, res *c
 	return nil
 }
 
-func (r *Reserver) findFreeIdx(e *state.SteadyResvEntry) (sbresv.Index, error) {
+func (r *Reserver) findFreeIdx(e *state.SteadyResvEntry) (sibra.Index, error) {
 	e.RLock()
 	defer e.RUnlock()
-	start := (e.ActiveIndex + 1) % sbresv.NumIndexes
-	for i := start; i != e.ActiveIndex; i = (i + 1) % sbresv.NumIndexes {
+	start := (e.ActiveIndex + 1) % sibra.NumIndexes
+	for i := start; i != e.ActiveIndex; i = (i + 1) % sibra.NumIndexes {
 		if e.Indexes[i] == nil {
 			return i, nil
 		}
@@ -363,7 +363,7 @@ func (r *Reserver) getPath(config *conf.Conf) (*spathmeta.AppPath, bool) {
 }
 
 func (r *Reserver) pathToIntfs(path *spathmeta.AppPath,
-	pathType sbresv.PathType) []sibra_mgmt.PathInterface {
+	pathType sibra.PathType) []sibra_mgmt.PathInterface {
 
 	intfs := make([]sibra_mgmt.PathInterface, len(r.path.Entry.Path.Interfaces))
 	for i := range r.path.Entry.Path.Interfaces {
@@ -393,7 +393,7 @@ func (r *Reserver) Closed() bool {
 	return r.stopped
 }
 
-func abs(a sbresv.Bps) sbresv.Bps {
+func abs(a sibra.Bps) sibra.Bps {
 	if a < 0 {
 		return -a
 	}

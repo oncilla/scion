@@ -37,7 +37,7 @@ import (
 	"github.com/scionproto/scion/go/lib/topology"
 	"github.com/scionproto/scion/go/lib/util"
 	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo/impl"
 	"github.com/scionproto/scion/go/sibra_srv/sbalgo/state"
 )
 
@@ -96,7 +96,7 @@ type Conf struct {
 	// Matrix holds the reservable bandwidth between interfaces.
 	Matrix state.Matrix
 	// SibraAlgo holds the algorithm with state for handling SIBRA requests.
-	SibraAlgo sibra.Algo
+	SibraAlgo sbalgo.Algo
 	// SOFMacPool is the pool for SIBRA OpField MAC generation.
 	SOFMacPool *sync.Pool
 	// ResvDB holds established SIBRA reservations.
@@ -230,7 +230,7 @@ func (c *Conf) loadReservations() (err error) {
 }
 
 func (c *Conf) loadSibraState() (err error) {
-	c.SibraAlgo, err = sbalgo.NewSibraFast(c.Topo, c.Matrix)
+	c.SibraAlgo, err = impl.NewSibraFast(c.Topo, c.Matrix)
 	return err
 }
 

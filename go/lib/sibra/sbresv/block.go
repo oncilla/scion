@@ -15,14 +15,13 @@
 package sbresv
 
 import (
-	"hash"
-
 	"fmt"
-
+	"hash"
 	"time"
 
 	"github.com/scionproto/scion/go/lib/assert"
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/sibra"
 )
 
 // Block is the SIBRA reservation block. It is made up of a reservation info
@@ -80,7 +79,7 @@ func NewBlock(info *Info, numHops int) *Block {
 	}
 }
 
-func (b *Block) Verify(mac hash.Hash, sofIdx int, ids []ID, pLens []uint8, now time.Time) error {
+func (b *Block) Verify(mac hash.Hash, sofIdx int, ids []sibra.ID, pLens []uint8, now time.Time) error {
 	if sofIdx < 0 || sofIdx >= b.NumHops() {
 		return common.NewBasicError("SofIndex out of range", nil, "min", 0,
 			"max", b.NumHops(), "actual", sofIdx)
@@ -98,7 +97,7 @@ func (b *Block) Verify(mac hash.Hash, sofIdx int, ids []ID, pLens []uint8, now t
 	return b.SOFields[sofIdx].Verify(mac, b.Info, ids, pLens, sof)
 }
 
-func (b *Block) SetMac(mac hash.Hash, sofIdx int, ids []ID, pLens []uint8) error {
+func (b *Block) SetMac(mac hash.Hash, sofIdx int, ids []sibra.ID, pLens []uint8) error {
 	if sofIdx < 0 || sofIdx >= b.NumHops() {
 		return common.NewBasicError("SofIndex out of range", nil, "min", 0,
 			"max", b.NumHops(), "actual", sofIdx)

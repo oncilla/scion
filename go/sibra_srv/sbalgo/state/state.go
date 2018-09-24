@@ -20,10 +20,10 @@ import (
 	"sync"
 
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/topology"
 	"github.com/scionproto/scion/go/proto"
-	"github.com/scionproto/scion/go/sibra_srv/sbalgo/sibra"
+	"github.com/scionproto/scion/go/sibra_srv/sbalgo"
 )
 
 type SibraState struct {
@@ -34,7 +34,7 @@ type SibraState struct {
 	// Infos maps interfaces to bandwidth information.
 	Infos map[common.IFIDType]IFInfo
 	// TransitCap is the TODO(roosd)
-	TransitCap map[sibra.IFTuple]*IFState
+	TransitCap map[sbalgo.IFTuple]*IFState
 	// SteadyMap keeps track of steady reservations.
 	SteadyMap *SteadyResvMap
 	// TempTable stores temporary reservations.
@@ -49,7 +49,7 @@ func NewSibraState(topo *topology.Topo, mat Matrix) (*SibraState, error) {
 	s := &SibraState{
 		InIfids:    map[common.IFIDType]map[common.IFIDType]struct{}{},
 		Infos:      make(map[common.IFIDType]IFInfo),
-		TransitCap: make(map[sibra.IFTuple]*IFState),
+		TransitCap: make(map[sbalgo.IFTuple]*IFState),
 		TempTable:  NewTempTable(),
 		Delta:      0.6,
 		Topo:       topo,
@@ -74,8 +74,8 @@ func NewSibraState(topo *topology.Topo, mat Matrix) (*SibraState, error) {
 
 func (s *SibraState) addTransitCap(mat Matrix, in, eg common.IFIDType, inT, egT proto.LinkType) {
 	// For entries which are not in the matrix, this will return zero
-	bps := sbresv.Bps(mat[in][eg])
-	ifids := sibra.IFTuple{
+	bps := sibra.Bps(mat[in][eg])
+	ifids := sbalgo.IFTuple{
 		InIfid: in,
 		EgIfid: eg,
 	}
@@ -94,7 +94,7 @@ func (s *SibraState) addTransitCap(mat Matrix, in, eg common.IFIDType, inT, egT 
 	s.addEgCap(eg, bps)
 }
 
-func (s *SibraState) addInCap(ifid common.IFIDType, bps sbresv.Bps) {
+func (s *SibraState) addInCap(ifid common.IFIDType, bps sibra.Bps) {
 	if _, ok := s.Infos[ifid]; !ok {
 		s.Infos[ifid] = IFInfo{
 			Ingress: &IFState{},
@@ -104,7 +104,7 @@ func (s *SibraState) addInCap(ifid common.IFIDType, bps sbresv.Bps) {
 	s.Infos[ifid].Ingress.Total += bps
 }
 
-func (s *SibraState) addEgCap(ifid common.IFIDType, bps sbresv.Bps) {
+func (s *SibraState) addEgCap(ifid common.IFIDType, bps sibra.Bps) {
 	if _, ok := s.Infos[ifid]; !ok {
 		s.Infos[ifid] = IFInfo{
 			Ingress: &IFState{},

@@ -27,7 +27,7 @@ import (
 	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
 	"github.com/scionproto/scion/go/lib/overlay"
 	"github.com/scionproto/scion/go/lib/ringbuf"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
+	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/topology"
 )
 
@@ -57,7 +57,7 @@ func (s *rSibraExtn) VerifySOF() (HookResult, error) {
 	}
 	// validate hop fields
 	pLens := []uint8{s.PathLens[s.CurrSteady]}
-	ids := []sbresv.ID{s.IDs[s.CurrSteady]}
+	ids := []sibra.ID{s.IDs[s.CurrSteady]}
 	if !s.Steady {
 		pLens = s.PathLens
 		ids = s.IDs
