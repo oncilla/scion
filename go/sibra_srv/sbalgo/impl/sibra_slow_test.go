@@ -42,7 +42,7 @@ func TestAlgoSlow_Available(t *testing.T) {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
 			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
-			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
+			SoMsg("avail", s.Available(p.Ifids, p.Extn.GetCurrID()), ShouldEqual, min)
 		})
 		_, err := s.AdmitSteady(p)
 		xtest.FailOnErr(t, err)
@@ -50,7 +50,7 @@ func TestAlgoSlow_Available(t *testing.T) {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
 			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
-			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
+			SoMsg("avail", s.Available(p.Ifids, p.Extn.GetCurrID()), ShouldEqual, min)
 		})
 		p = setupParams(ifids, s.Topo.ISD_AS, 1, 27, sibra.PathTypeUp, 10, 3)
 		Convey("Available has decreased", func() {
@@ -58,7 +58,7 @@ func TestAlgoSlow_Available(t *testing.T) {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total - reserved
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total - reserved
 			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
-			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
+			SoMsg("avail", s.Available(p.Ifids, p.Extn.GetCurrID()), ShouldEqual, min)
 		})
 		ifids = sbalgo.IFTuple{
 			InIfid: 16,
@@ -69,7 +69,7 @@ func TestAlgoSlow_Available(t *testing.T) {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
 			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
-			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldBeLessThan, min)
+			SoMsg("avail", s.Available(p.Ifids, p.Extn.GetCurrID()), ShouldBeLessThan, min)
 		})
 		ifids = sbalgo.IFTuple{
 			InIfid: 81,
@@ -80,7 +80,7 @@ func TestAlgoSlow_Available(t *testing.T) {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
 			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
-			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
+			SoMsg("avail", s.Available(p.Ifids, p.Extn.GetCurrID()), ShouldEqual, min)
 		})
 
 	})

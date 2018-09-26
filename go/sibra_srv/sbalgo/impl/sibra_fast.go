@@ -188,8 +188,11 @@ func (s *AlgoFast) tubeRatio(c *calcState) float64 {
 			assert.Must(false, "Sum of transit demand is 0",
 				"in", c.Ifids.InIfid, "eg", c.Ifids.EgIfid)
 		}
-		// TODO(roosd): remove
-		panic(fmt.Sprintf("Sum of transit demand between (%d,%d) is 0", c.Ifids.InIfid, c.Ifids.EgIfid))
+		// XXX(roosd): Panic to find possible bugs. Should be removed
+		// before deploying to production and return 0 instead.
+		log.Crit("Sum of transit demand less or equal 0",
+			"dem", sum, "ingress", c.Ifids.InIfid, "egress", c.Ifids.EgIfid)
+		panic("Sum of transit demand less or equal 0")
 		return 0
 	}
 	return transDem / sum
@@ -391,16 +394,9 @@ func (s *AlgoFast) setNextDemState(dem *demState, diff, lastMax, nextMax sibra.B
 	if diff > 0 {
 		dem.nextSrcAlloc += diff
 	}
-	switch {
-	case dem.currSrcDem == 0:
-		dem.nextSrcDem = minBps(nextMax, min)
-		dem.nextInDem = dem.nextSrcDem
-		dem.nextEgDem = dem.nextSrcDem
-	case capLastMax < capNextMax:
-		dem.nextSrcDem = dem.currSrcDem + capNextMax - capLastMax
-		dem.nextInDem = dem.currInDem + dem.nextSrcDem - dem.currSrcDem
-		dem.nextEgDem = dem.currEgDem + dem.nextSrcDem - dem.currSrcDem
-	}
+	dem.nextSrcDem = dem.currSrcDem + capNextMax - capLastMax
+	dem.nextInDem = dem.currInDem + dem.nextSrcDem - dem.currSrcDem
+	dem.nextEgDem = dem.currEgDem + dem.nextSrcDem - dem.currSrcDem
 }
 
 func (s *AlgoFast) updateSourceMap(dem *demState) *state.EphemResvMap {
@@ -478,20 +474,25 @@ func (s *AlgoFast) CleanSteadyResv(c sbalgo.CleanParams) {
 		return
 	}
 	minCap := minBps(s.Infos[c.Ifids.InIfid].Ingress.Total, s.Infos[c.Ifids.EgIfid].Egress.Total)
-
 	dem.nextSrcDem = dem.currSrcDem + minBps(c.CurrMax, minCap) - minBps(c.LastMax, minCap)
 	dem.nextInDem = dem.currInDem + dem.nextSrcDem - dem.currSrcDem
 	dem.nextEgDem = dem.currEgDem + dem.nextSrcDem - dem.currSrcDem
 	s.SourceMap[c.Src].SrcDemand[c.Ifids] = dem.nextSrcDem
-	s.SourceMap[c.Src].EgDemand[c.Ifids.InIfid] = dem.nextInDem
+	s.SourceMap[c.Src].InDemand[c.Ifids.InIfid] = dem.nextInDem
 	s.SourceMap[c.Src].EgDemand[c.Ifids.EgIfid] = dem.nextEgDem
+	// XXX(roosd): Panic to find possible bugs. Should be removed
+	// before deploying to production.
 	if dem.nextSrcDem < 0 {
 		log.Crit("nextSrcDem negative", "nextSrcDem", dem.nextSrcDem)
 		panic("nextSrcDem negative")
 	}
 	if dem.nextInDem < 0 {
-		log.Crit("nextSrcDem negative", "nextSrcDem", dem.nextSrcDem)
-		panic("nextSrcDem negative")
+		log.Crit("nextInDem negative", "nextInDem", dem.nextInDem)
+		panic("nextInDem negative")
+	}
+	if dem.nextEgDem < 0 {
+		log.Crit("nextEgDem negative", "nextEgDem", dem.nextEgDem)
+		panic("nextEgDem negative")
 	}
 	s.updateTransitMap(dem)
 	// This means there is no valid index anymore.

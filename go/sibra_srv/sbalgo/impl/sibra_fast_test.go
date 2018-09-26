@@ -16,8 +16,10 @@ package impl
 
 import (
 	"fmt"
+	"math/rand"
 	"path/filepath"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -40,7 +42,7 @@ func TestAlgoFast_Available(t *testing.T) {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
 			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
-			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
+			SoMsg("avail", s.Available(p.Ifids, p.Extn.GetCurrID()), ShouldEqual, min)
 		})
 		_, err := s.AdmitSteady(p)
 		xtest.FailOnErr(t, err)
@@ -48,7 +50,7 @@ func TestAlgoFast_Available(t *testing.T) {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
 			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
-			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
+			SoMsg("avail", s.Available(p.Ifids, p.Extn.GetCurrID()), ShouldEqual, min)
 		})
 		p = setupParams(ifids, s.Topo.ISD_AS, 1, 27, sibra.PathTypeUp, 10, 3)
 		Convey("Available has decreased", func() {
@@ -56,7 +58,7 @@ func TestAlgoFast_Available(t *testing.T) {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total - reserved
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total - reserved
 			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
-			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
+			SoMsg("avail", s.Available(p.Ifids, p.Extn.GetCurrID()), ShouldEqual, min)
 		})
 		ifids = sbalgo.IFTuple{
 			InIfid: 16,
@@ -67,7 +69,7 @@ func TestAlgoFast_Available(t *testing.T) {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
 			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
-			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldBeLessThan, min)
+			SoMsg("avail", s.Available(p.Ifids, p.Extn.GetCurrID()), ShouldBeLessThan, min)
 		})
 		ifids = sbalgo.IFTuple{
 			InIfid: 81,
@@ -78,7 +80,7 @@ func TestAlgoFast_Available(t *testing.T) {
 			in := s.Infos[p.Ifids.InIfid].Ingress.Total
 			eg := s.Infos[p.Ifids.EgIfid].Egress.Total
 			min := sibra.Bps(float64(minBps(in, eg)) * s.Delta)
-			SoMsg("avail", s.Available(p.Ifids, p.Extn.ReqID), ShouldEqual, min)
+			SoMsg("avail", s.Available(p.Ifids, p.Extn.GetCurrID()), ShouldEqual, min)
 		})
 
 	})
@@ -399,6 +401,42 @@ func TestAlgoFast_tubeRatio(t *testing.T) {
 	})
 }
 
+func TestAlgoFast_Fuzzing(t *testing.T) {
+	Convey("Fuzzing does not panic", t, func() {
+		s := loadAlgoFast(t)
+		for i := 0; i < 100; i++ {
+			tu := ifids[rand.Int()%len(ifids)]
+			bw := sibra.BwCls(rand.Int()%27) + 1
+			p := setupParams(tu.ifids, s.Topo.ISD_AS, uint32(i), bw, tu.pathType, 10, 3)
+			p.Req.Info.ExpTick = sibra.CurrentTick().Add(1)
+			_, err := s.AdmitSteady(p)
+			xtest.FailOnErr(t, err)
+		}
+
+		time.Sleep(10 * time.Second)
+
+		for i := 0; i < 100; i++ {
+			tu := ifids[rand.Int()%len(ifids)]
+			bw := sibra.BwCls(rand.Int()%27) + 1
+			p := setupParams(tu.ifids, s.Topo.ISD_AS, uint32(i+1000), bw, tu.pathType, 10, 3)
+			p.Req.Info.ExpTick = sibra.CurrentTick().Add(1)
+			_, err := s.AdmitSteady(p)
+			xtest.FailOnErr(t, err)
+		}
+
+		time.Sleep(10 * time.Second)
+
+		for i := 0; i < 100; i++ {
+			tu := ifids[rand.Int()%len(ifids)]
+			bw := sibra.BwCls(rand.Int()%27) + 1
+			p := setupParams(tu.ifids, s.Topo.ISD_AS, uint32(i+2000), bw, tu.pathType, 10, 3)
+			p.Req.Info.ExpTick = sibra.CurrentTick().Add(1)
+			_, err := s.AdmitSteady(p)
+			xtest.FailOnErr(t, err)
+		}
+	})
+}
+
 func loadAlgoFast(t *testing.T) *AlgoFast {
 	topo, err := topology.LoadFromFile(filepath.Join("testdata", topology.CfgName))
 	xtest.FailOnErr(t, err)
@@ -407,4 +445,82 @@ func loadAlgoFast(t *testing.T) *AlgoFast {
 	s, err := NewSibraFast(topo, mat)
 	xtest.FailOnErr(t, err)
 	return s
+}
+
+type tup struct {
+	ifids    sbalgo.IFTuple
+	pathType sibra.PathType
+}
+
+var ifids = []tup{
+	{
+		ifids: sbalgo.IFTuple{
+			InIfid: 0,
+			EgIfid: 16,
+		},
+		pathType: sibra.PathTypeDown,
+	},
+	{
+		ifids: sbalgo.IFTuple{
+			InIfid: 0,
+			EgIfid: 17,
+		},
+		pathType: sibra.PathTypePeerUp,
+	},
+	{
+		ifids: sbalgo.IFTuple{
+			InIfid: 0,
+			EgIfid: 81,
+		},
+		pathType: sibra.PathTypeUp,
+	},
+	{
+		ifids: sbalgo.IFTuple{
+			InIfid: 16,
+			EgIfid: 0,
+		},
+		pathType: sibra.PathTypeUp,
+	},
+	{
+		ifids: sbalgo.IFTuple{
+			InIfid: 16,
+			EgIfid: 17,
+		},
+		pathType: sibra.PathTypePeerUp,
+	},
+	{
+		ifids: sbalgo.IFTuple{
+			InIfid: 16,
+			EgIfid: 81,
+		},
+		pathType: sibra.PathTypeUp,
+	},
+	{
+		ifids: sbalgo.IFTuple{
+			InIfid: 17,
+			EgIfid: 0,
+		},
+		pathType: sibra.PathTypePeerUp,
+	},
+	{
+		ifids: sbalgo.IFTuple{
+			InIfid: 17,
+			EgIfid: 16,
+		},
+		pathType: sibra.PathTypePeerDown,
+	},
+	{
+		ifids: sbalgo.IFTuple{
+			InIfid: 81,
+			EgIfid: 0,
+		},
+		pathType: sibra.PathTypeDown,
+	},
+	{
+		ifids: sbalgo.IFTuple{
+			InIfid: 81,
+			EgIfid: 16,
+		},
+		pathType: sibra.PathTypeDown,
+	},
 }

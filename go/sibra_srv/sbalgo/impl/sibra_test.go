@@ -163,7 +163,25 @@ func setupParams(ifids sbalgo.IFTuple, src addr.IA, suf uint32, maxBw sibra.BwCl
 		ExpTick:  sibra.CurrentTick().Add(sibra.MaxSteadyTicks),
 		RttCls:   rtt,
 	}
-	req := sbreq.NewSteadyReq(sbreq.RSteadySetup, info, 0, maxBw, numHop)
+	// Create request block.
+	req := &sbreq.SteadyReq{
+		DataType:    sbreq.RSteadySetup,
+		AccBw:       maxBw,
+		Info:        info,
+		MinBw:       0,
+		MaxBw:       maxBw,
+		OfferFields: make([]*sbreq.Offer, numHop),
+	}
+	// Initialize the offer fields.
+	for i := range req.OfferFields {
+		req.OfferFields[i] = &sbreq.Offer{}
+	}
+	// Set allocated bandwidth in own offer field.
+	if req.Info.PathType.Reversed() {
+		req.OfferFields[len(req.OfferFields)-1].AllocBw = maxBw
+	} else {
+		req.OfferFields[0].AllocBw = maxBw
+	}
 	id := sibra.NewSteadyID(src.A, suf)
 	extn, err := sbcreate.NewSteadySetup(req, id)
 	if err != nil {

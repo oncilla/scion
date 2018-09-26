@@ -97,13 +97,13 @@ func (t PathType) ValidIFPair(in, eg proto.LinkType) bool {
 			eg == proto.LinkType_parent) || (in == proto.LinkType_child &&
 			eg == proto.LinkType_unset)
 	case PathTypePeerDown:
-		return ((in == proto.LinkType_unset || in == proto.LinkType_peer ||
-			in == proto.LinkType_parent) && eg == proto.LinkType_child) ||
-			(in == proto.LinkType_parent && eg == proto.LinkType_unset)
+		return (in == proto.LinkType_unset && eg == proto.LinkType_peer) ||
+			((in == proto.LinkType_peer || in == proto.LinkType_parent) &&
+				(eg == proto.LinkType_unset || eg == proto.LinkType_child))
 	case PathTypePeerUp:
-		return ((in == proto.LinkType_unset || in == proto.LinkType_peer ||
-			in == proto.LinkType_child) && eg == proto.LinkType_parent) ||
-			(in == proto.LinkType_child && eg == proto.LinkType_unset)
+		return ((in == proto.LinkType_unset || in == proto.LinkType_child) &&
+			(eg == proto.LinkType_parent || eg == proto.LinkType_peer)) ||
+			(in == proto.LinkType_peer && eg == proto.LinkType_unset)
 	case PathTypeEphemeral:
 		// FIXME(roosd)
 		return true
