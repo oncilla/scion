@@ -101,7 +101,7 @@ func (e *EphemResvEntry) CleanUpIdx(failedInfo, lastInfo *sbresv.Info) (sbresv.I
 }
 
 func validateFailedInfo(failedInfo, local *sbresv.Info) bool {
-	return failedInfo.ExpTick == local.ExpTick && failedInfo.RttCls == local.RttCls &&
+	return failedInfo.ExpTick == local.ExpTick && failedInfo.RLC == local.RLC &&
 		failedInfo.Index == local.Index && failedInfo.PathType == local.PathType
 }
 

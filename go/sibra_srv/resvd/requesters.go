@@ -238,10 +238,11 @@ type SteadySetup struct {
 	pt   sibra.PathType
 }
 
-func (s *SteadySetup) probeRtt() (sibra.RttCls, error) {
-	// FIXME(roosd): calculate RttCls
-	s.timeout = sibra.RttCls(10).Duration()
-	return 10, nil
+func (s *SteadySetup) probeRLC() (sibra.RLC, error) {
+	// FIXME(roosd): calculate RLC
+	rlc := sibra.DurationToRLC(time.Second, false)
+	s.timeout = rlc.Duration()
+	return rlc, nil
 }
 
 func (s *SteadySetup) CreateExtPkt() (*conf.ExtPkt, error) {
@@ -250,14 +251,14 @@ func (s *SteadySetup) CreateExtPkt() (*conf.ExtPkt, error) {
 		Conf: conf.Get(),
 	}
 	pLen := uint8((len(s.path.Entry.Path.Interfaces) + 2) / 2)
-	rtt, err := s.probeRtt()
+	rlc, err := s.probeRLC()
 	if err != nil {
-		return nil, common.NewBasicError("Unable to probe rtt class", err)
+		return nil, common.NewBasicError("Unable to probe rlc", err)
 	}
 	info := &sbresv.Info{
 		ExpTick:  sibra.CurrentTick() + sibra.MaxSteadyTicks,
 		BwCls:    s.max,
-		RttCls:   rtt,
+		RLC:      rlc,
 		PathType: s.pt,
 		Index:    s.idx,
 	}
@@ -316,7 +317,7 @@ func (s *SteadySetup) HandleRep(pkt *conf.ExtPkt) error {
 			srcHost: s.srcHost,
 			dstHost: pkt.Spkt.SrcHost,
 			block:   block,
-			timeout: block.Info.RttCls.Duration(),
+			timeout: block.Info.RLC.Duration(),
 		},
 		state: sibra.StatePending,
 	}
@@ -332,7 +333,7 @@ func (s *SteadyRenew) PrepareReq(pkt *conf.ExtPkt) error {
 	info := &sbresv.Info{
 		ExpTick:  sibra.CurrentTick() + sibra.MaxSteadyTicks,
 		BwCls:    s.max,
-		RttCls:   s.block.Info.RttCls,
+		RLC:      s.block.Info.RLC,
 		PathType: s.block.Info.PathType,
 		Index:    s.idx,
 	}
@@ -370,7 +371,7 @@ func (s *SteadyRenew) HandleRep(pkt *conf.ExtPkt) error {
 			srcHost: s.srcHost,
 			dstHost: pkt.Spkt.SrcHost,
 			block:   s.block,
-			timeout: s.block.Info.RttCls.Duration(),
+			timeout: s.block.Info.RLC.Duration(),
 		},
 		state: sibra.StatePending,
 	}

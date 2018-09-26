@@ -342,7 +342,7 @@ func (s *AlgoFast) AddSteadyResv(p sbalgo.AdmParams, alloc sibra.BwCls) error {
 		ResvMapEntry: stEntry,
 		Idx:          p.Req.Info.Index,
 	}
-	s.TempTable.Set(p.Extn.GetCurrID(), p.Req.Info.Index, tmpEntry, info.RttCls.Duration())
+	s.TempTable.Set(p.Extn.GetCurrID(), p.Req.Info.Index, tmpEntry, info.RLC.Duration())
 	return nil
 }
 

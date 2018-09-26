@@ -214,7 +214,7 @@ func (s *EphemSetup) PrepareRequest() (common.Extension, *sbreq.Pld, error) {
 		ExpTick:  sibra.CurrentTick() + sibra.MaxEphemTicks,
 		BwCls:    s.bwCls,
 		PathType: sibra.PathTypeEphemeral,
-		RttCls:   10, // FIXME(roosd): add RTT classes based on steady
+		RLC:      10, // FIXME(roosd): add RTT classes based on steady
 	}
 	pld := &sbreq.Pld{
 		Type:      sbreq.REphmSetup,
@@ -288,7 +288,7 @@ func (r *EphemRenew) PrepareRequest() (common.Extension, *sbreq.Pld, error) {
 		ExpTick:  sibra.CurrentTick() + sibra.MaxEphemTicks,
 		BwCls:    r.bwCls,
 		PathType: sibra.PathTypeEphemeral,
-		RttCls:   10, // FIXME(roosd): add RTT classes based on steady
+		RLC:      10, // FIXME(roosd): add RTT classes based on steady
 		Index:    r.idx,
 	}
 	pld := &sbreq.Pld{

@@ -213,7 +213,7 @@ func (r *Reserver) activateIdx(config *conf.Conf, idx sibra.Index) {
 			srcHost: config.PublicAddr.Host,
 			dstHost: addr.SvcSB,
 			block:   e.Block,
-			timeout: e.Block.Info.RttCls.Duration(),
+			timeout: e.Block.Info.RLC.Duration(),
 
 			succFunc: func(ReqstrI) {
 				r.Info("insert", "s", meta.StartIA(), "e", meta.EndIA())
@@ -279,7 +279,7 @@ func (r *Reserver) renewResv(config *conf.Conf, e *state.SteadyResvEntry, res *c
 				srcHost: config.PublicAddr.Host,
 				dstHost: addr.SvcSB,
 				block:   results[0].BlockMeta.Block,
-				timeout: results[0].BlockMeta.Block.Info.RttCls.Duration(),
+				timeout: results[0].BlockMeta.Block.Info.RLC.Duration(),
 			},
 			min: res.MinSize,
 			max: res.DesiredSize,

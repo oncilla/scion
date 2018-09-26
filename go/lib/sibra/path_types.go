@@ -105,8 +105,8 @@ func (t PathType) ValidIFPair(in, eg proto.LinkType) bool {
 			(eg == proto.LinkType_parent || eg == proto.LinkType_peer)) ||
 			(in == proto.LinkType_peer && eg == proto.LinkType_unset)
 	case PathTypeEphemeral:
-		// FIXME(roosd)
-		return true
+		return !((in == proto.LinkType_parent && eg == proto.LinkType_parent) ||
+			(in == proto.LinkType_peer && eg == proto.LinkType_peer))
 	case PathTypeCore:
 		return ((in == proto.LinkType_unset || in == proto.LinkType_core) &&
 			eg == proto.LinkType_core) || (in == proto.LinkType_core &&

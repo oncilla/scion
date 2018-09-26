@@ -193,17 +193,37 @@ func (b BwCls) Bps() Bps {
 	return Bps(math.Floor(BwFactor * base))
 }
 
-// RttCls is the SIBRA rtt class. It allows an estimation how long
-// a reservation request will take to travel to the end of the path
-// and back.
-type RttCls uint8
+// MaxRLC is the maximum request latency class. It equates to 4 seconds.
+const MaxRLC RLC = 12
 
-func (r RttCls) Duration() time.Duration {
+// RLC is the SIBRA request latency class. It allows an estimation how long
+// a reservation request will take to travel to the end of the path
+// and back including the processing times.
+type RLC uint8
+
+func (r RLC) Duration() time.Duration {
+	// XXX(roosd): For testing purposes. Remove before putting in production.
 	if r == 255 {
 		return MaxEphemTicks * TickDuration
 	}
-	// FIXME(roosd): implement
-	return 1 * time.Second
+	if r >= MaxRLC {
+		return (1 << MaxRLC) * time.Millisecond
+	}
+	return (1 << r) * time.Millisecond
+}
+
+// DurationToRLC converts the duration to the RLC. The RLC is capped by MaxRLC.
+func DurationToRLC(duration time.Duration, floor bool) RLC {
+	ms := duration / time.Millisecond
+	cls := math.Log2(float64(ms))
+	val := RLC(math.Ceil(cls))
+	if floor {
+		val = RLC(math.Floor(cls))
+	}
+	if val > MaxRLC {
+		return MaxRLC
+	}
+	return val
 }
 
 // Index is the reservation index. It allows multiple versions of a

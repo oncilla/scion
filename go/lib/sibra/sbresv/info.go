@@ -56,8 +56,8 @@ type Info struct {
 	ExpTick sibra.Tick
 	// BwCls is the bandwidth class.
 	BwCls sibra.BwCls
-	// RttCls is the round trip class.
-	RttCls sibra.RttCls
+	// RLC is the round trip class.
+	RLC sibra.RLC
 	// Index is the reservation index.
 	Index sibra.Index
 	// PathType is the path type.
@@ -70,7 +70,7 @@ func NewInfoFromRaw(raw common.RawBytes) *Info {
 	return &Info{
 		ExpTick:  sibra.Tick(common.Order.Uint32(raw[:4])),
 		BwCls:    sibra.BwCls(raw[4]),
-		RttCls:   sibra.RttCls(raw[5]),
+		RLC:      sibra.RLC(raw[5]),
 		Index:    parseIdx(raw[6]),
 		PathType: parsePathType(raw[6]),
 		FailHop:  raw[7],
@@ -96,7 +96,7 @@ func (i *Info) Write(b common.RawBytes) error {
 	}
 	common.Order.PutUint32(b[:4], uint32(i.ExpTick))
 	b[4] = uint8(i.BwCls)
-	b[5] = uint8(i.RttCls)
+	b[5] = uint8(i.RLC)
 	b[6] = i.packIdxPathType()
 	b[7] = i.FailHop
 	return nil
@@ -110,7 +110,7 @@ func (i *Info) Copy() *Info {
 	return &Info{
 		ExpTick:  i.ExpTick,
 		BwCls:    i.BwCls,
-		RttCls:   i.RttCls,
+		RLC:      i.RLC,
 		Index:    i.Index,
 		PathType: i.PathType,
 		FailHop:  i.FailHop,
@@ -118,8 +118,8 @@ func (i *Info) Copy() *Info {
 }
 
 func (i *Info) String() string {
-	return fmt.Sprintf("Exp: %s BwCls: %v RttCls: %v Idx: %d Path: %s FailHop: %d",
-		i.ExpTick.Time(), i.BwCls, i.RttCls, i.Index, i.PathType, i.FailHop)
+	return fmt.Sprintf("Exp: %s BwCls: %v RLC: %v Idx: %d Path: %s FailHop: %d",
+		i.ExpTick.Time(), i.BwCls, i.RLC, i.Index, i.PathType, i.FailHop)
 }
 
 func (i *Info) Eq(o *Info) bool {

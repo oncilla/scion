@@ -72,16 +72,16 @@ func (h *EphemHandler) HandleSetupResvReqEndAS(pkt *conf.ExtPkt) error {
 }
 
 func (h *EphemHandler) getTimeout(pkt *conf.ExtPkt) time.Duration {
-	var rttCls sibra.RttCls
+	var rlc sibra.RLC
 	var numHops int
 	if pkt.Steady != nil {
-		rttCls = pkt.Steady.GetCurrBlock().Info.RttCls
+		rlc = pkt.Steady.GetCurrBlock().Info.RLC
 		numHops = int(pkt.Steady.PathLens[pkt.Steady.CurrBlock])
 	} else {
-		rttCls = pkt.Ephem.GetCurrBlock().Info.RttCls
+		rlc = pkt.Ephem.GetCurrBlock().Info.RLC
 		numHops = pkt.Ephem.TotalHops
 	}
-	return rttCls.Duration() / time.Duration(numHops)
+	return rlc.Duration() / time.Duration(numHops)
 }
 
 func (h *EphemHandler) sendReqToClient(pkt *conf.ExtPkt, to time.Duration) error {

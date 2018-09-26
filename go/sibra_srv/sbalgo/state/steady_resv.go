@@ -168,7 +168,7 @@ func (e *SteadyResvEntry) PromoteToSOFCreated(info *sbresv.Info) error {
 		return common.NewBasicError("Invalid actual BW class", nil, "idx", info.Index,
 			"max", sub.Info.BwCls, "actual", info.BwCls)
 	}
-	if sub.Info.ExpTick != info.ExpTick || sub.Info.RttCls != info.RttCls ||
+	if sub.Info.ExpTick != info.ExpTick || sub.Info.RLC != info.RLC ||
 		sub.Info.PathType != info.PathType || info.FailHop != 0 {
 		return common.NewBasicError("Invalid info", nil, "expected", sub.Info, "actual", info)
 	}

@@ -155,13 +155,13 @@ func benchmarkAdmitSteady(s sbalgo.Algo, p benchParams, b *testing.B) {
 }
 
 func setupParams(ifids sbalgo.IFTuple, src addr.IA, suf uint32, maxBw sibra.BwCls,
-	pt sibra.PathType, rtt sibra.RttCls, numHop uint8) sbalgo.AdmParams {
+	pt sibra.PathType, rlc sibra.RLC, numHop uint8) sbalgo.AdmParams {
 
 	info := &sbresv.Info{
 		BwCls:    maxBw,
 		PathType: pt,
 		ExpTick:  sibra.CurrentTick().Add(sibra.MaxSteadyTicks),
-		RttCls:   rtt,
+		RLC:      rlc,
 	}
 	// Create request block.
 	req := &sbreq.SteadyReq{
