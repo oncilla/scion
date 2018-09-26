@@ -16,7 +16,9 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/gob"
 	"flag"
 	"fmt"
@@ -26,6 +28,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -44,8 +47,8 @@ import (
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/snet/squic"
 	"github.com/scionproto/scion/go/lib/spath"
+	"github.com/scionproto/scion/go/lib/spath/spathmeta"
 	"github.com/scionproto/scion/go/sibrad/resvmgr"
-	"github.com/scionproto/scion/go/sibrad/syncresv"
 )
 
 const (
@@ -79,6 +82,10 @@ var (
 	verbose      = flag.Bool("v", false, "sets verbose output")
 	sciondFromIA = flag.Bool("sciondFromIA", false,
 		"SCIOND socket path from IA address:ISD-AS")
+	wl4 = flag.String("wl4", "0-0,[0.0.0.0/0]", "Whitelisted IPv4 subnets. All reservations"+
+		"are accepted by default.")
+	wl6 = flag.String("wl6", "0-0,[::/0]", "Whitelisted IPv6 subnets. All reservations"+
+		"are accepted by default.")
 	fileData []byte
 )
 
@@ -268,7 +275,7 @@ func (c *client) run() {
 	c.initResvMgr()
 	// Needs to happen before DialSCION, as it will 'copy' the remote to the connection.
 	// If remote is not in local AS, we need a path!
-	c.setupPath()
+	ws := c.setupPath()
 	defer c.Close()
 	// Connect to remote address. Note that currently the SCION library
 	// does not support automatic binding to local addresses, so the local
@@ -279,7 +286,6 @@ func (c *client) run() {
 	if err != nil {
 		LogFatal("Unable to dial", "err", err)
 	}
-
 	qstream, err := c.qsess.OpenStreamSync()
 	if err != nil {
 		LogFatal("quic OpenStream failed", "err", err)
@@ -292,6 +298,10 @@ func (c *client) run() {
 	}
 	c.signalStream = newSignalStream(qstream)
 	log.Debug("Quic signal stream opened", "local", &local, "remote", &remote)
+	quit := make(chan struct{})
+	if ws != nil {
+		ws.DrainEvents(quit)
+	}
 	go c.send()
 	c.read()
 }
@@ -333,24 +343,26 @@ func (c *client) Close() error {
 	return err
 }
 
-func (c client) setupPath() {
+func (c client) setupPath() *resvmgr.WatchState {
 	if !remote.IA.Eq(local.IA) {
 		if *flush {
 			if err := c.flushPath(); err != nil {
 				LogFatal("Unable to flush", "err", err)
 			}
 		}
-		pathEntry, syncResvs := c.choosePath(*interactive)
+		pathEntry, ws := c.choosePath(*interactive)
 		if pathEntry == nil {
 			LogFatal("No paths available to remote destination")
 		}
 		remote.Path = spath.New(pathEntry.Path.FwdPath)
 		remote.Path.InitOffsets()
-		remote.SibraResv = syncResvs
+		remote.SibraResv = ws.SyncResv
 		remote.NextHopHost = pathEntry.HostInfo.Host()
 		remote.NextHopPort = pathEntry.HostInfo.Port
-		log.Info("sibrevs", "syncResvs", syncResvs, "remote", remote.SibraResv)
+		log.Info("sibrevs", "watchState", ws, "remote", remote.SibraResv)
+		return ws
 	}
+	return nil
 }
 
 func (c client) send() {
@@ -467,11 +479,10 @@ func (s *server) initResvMgr() {
 	if err != nil {
 		LogFatal("Unable to start reservation manager", err)
 	}
-	// FIXME(roosd): unhardcode this
-	_, ip4Net, _ := net.ParseCIDR("0.0.0.0/0")
-	_, ip6Net, _ := net.ParseCIDR("::/0")
-	s.mgr.AllowConnection(addr.IA{}, ip4Net)
-	s.mgr.AllowConnection(addr.IA{}, ip6Net)
+	wl4, _ := resvmgr.NetFromString(*wl4)
+	wl6, _ := resvmgr.NetFromString(*wl6)
+	s.mgr.AllowConnection(wl4.IA, wl4.Net)
+	s.mgr.AllowConnection(wl6.IA, wl6.Net)
 }
 
 func getSibraMode(a net.Addr) string {
@@ -592,94 +603,94 @@ func (c *client) flushPath() error {
 	return nil
 }
 
-func (c *client) choosePath(interactive bool) (*sd.PathReplyEntry, *syncresv.Store) {
-	/*
-		var paths []*spathmeta.AppPath
-		var pathIdx uint64
+func (c *client) choosePath(interactive bool) (*sd.PathReplyEntry, *resvmgr.WatchState) {
+	var paths []*spathmeta.AppPath
+	var pathIdx uint64
 
-		pathMgr := snet.DefNetwork.PathResolver()
+	pathMgr := snet.DefNetwork.PathResolver()
 
-		syncPaths, err := pathMgr.Watch(local.IA, remote.IA)
-		if err != nil {
-			return nil, nil
-		}
-		pathSet := syncPaths.Load().APS
-		if len(pathSet) == 0 {
-			return nil, nil
-		}
-		sibraResvs := make([]*syncresv.Store, len(pathSet))
-		sibraKeys := make([]resvmgr.ResvKey, len(pathSet))
-		i := 0
-		wg := sync.WaitGroup{}
-		wg.Add(len(pathSet))
-		for k, p := range pathSet {
-			paths = append(paths, p)
-			kCopy := k
-			iCopy := i
-			go func() {
-				defer wg.Done()
-				sresv, skey, err := c.mgr.WatchSteady(syncPaths, kCopy)
-				if err != nil {
-					log.Error("Error fetching steady reservation for path", "key", kCopy, "err", err)
-					return
-				}
-				resv := sresv.Load()
-				var ext common.Extension
-				if resv != nil {
-					ext, _ = resv.GetExtn()
-				}
-				log.Info("found sresvs", "sresv", resv, "ext", ext)
-				sibraResvs[iCopy] = sresv
-				sibraKeys[iCopy] = skey
-			}()
-			i++
-		}
-		wg.Wait()
-		log.Info("found sresvs", "sresvs", sibraResvs)
-		if interactive {
-			fmt.Printf("Available paths to %v\n", remote.IA)
-			for i := range paths {
-				fmt.Printf("[%2d] %s Sibra %t\n", i, paths[i].Entry.Path.String(), sibraResvs[i] != nil)
+	syncPaths, err := pathMgr.Watch(local.IA, remote.IA)
+	if err != nil {
+		return nil, nil
+	}
+	pathSet := syncPaths.Load().APS
+	if len(pathSet) == 0 {
+		return nil, nil
+	}
+	sibraEnabled := make([]bool, len(pathSet))
+	i := 0
+	wg := sync.WaitGroup{}
+	wg.Add(len(pathSet))
+	for k, p := range pathSet {
+		paths = append(paths, p)
+		kCopy := k
+		iCopy := i
+		go func() {
+			defer wg.Done()
+			ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancelF()
+			ws, err := c.mgr.WatchSteady(ctx, &resvmgr.PathConf{
+				Paths: syncPaths,
+				Key:   kCopy,
+			})
+			if err != nil {
+				log.Debug("Unable to fetch steady reservation", "key", iCopy, "err", err)
+				return
 			}
-			reader := bufio.NewReader(os.Stdin)
-			for {
-				fmt.Printf("Choose path: ")
-				pathIndexStr, _ := reader.ReadString('\n')
-				var err error
-				pathIdx, err = strconv.ParseUint(pathIndexStr[:len(pathIndexStr)-1], 10, 64)
-				if err == nil && int(pathIdx) < len(paths) {
-					break
-				}
-				fmt.Fprintf(os.Stderr, "ERROR: Invalid path index, valid indices range: [0, %v]\n", len(paths))
+			sibraEnabled[iCopy] = ws.SyncResv.Load() != nil
+			c.mgr.Unwatch(ws)
+
+		}()
+		i++
+	}
+	wg.Wait()
+	if interactive {
+		fmt.Printf("Available paths to %v\n", remote.IA)
+		for i := range paths {
+			fmt.Printf("[%2d] %s Sibra %t\n", i, paths[i].Entry.Path.String(), sibraEnabled[i])
+		}
+		reader := bufio.NewReader(os.Stdin)
+		for {
+			fmt.Printf("Choose path: ")
+			pathIndexStr, _ := reader.ReadString('\n')
+			var err error
+			pathIdx, err = strconv.ParseUint(pathIndexStr[:len(pathIndexStr)-1], 10, 64)
+			if err == nil && int(pathIdx) < len(paths) {
+				break
 			}
-		} else {
-			var found bool
-			for i, v := range sibraResvs {
-				if v != nil {
-					pathIdx = uint64(i)
-					found = true
-					break
-				}
-			}
-			if !found {
-				LogFatal("No SIBRA enabled path found")
+			fmt.Fprintf(os.Stderr, "ERROR: Invalid path index, valid indices range: [0, %v]\n", len(paths))
+		}
+	} else {
+		var found bool
+		for i, v := range sibraEnabled {
+			if v {
+				pathIdx = uint64(i)
+				found = true
+				break
 			}
 		}
-		// Do ephemeral reservation
-		params := &resvmgr.EphemConf{
-			Paths:       syncPaths,
-			PathKey:     paths[pathIdx].Key(),
-			MaxBWCls:    resv.BwCls(*bwCls),
-			MinBWCls:    1,
-			Destination: remote.Host,
+		if !found {
+			LogFatal("No SIBRA enabled path found")
 		}
-		sresvs, _, err := c.mgr.WatchEphem(params)
-		if err != nil {
-			LogFatal("Error reserving ephemeral reservation", "err", err)
-		}
-		fmt.Printf("Using path:\n  %s\n", paths[pathIdx].Entry.Path.String())
-		return paths[pathIdx].Entry, sresvs*/
-	return nil, nil
+	}
+	// Setup ephemeral reservation
+	params := &resvmgr.EphemConf{
+		PathConf: &resvmgr.PathConf{
+			Paths: syncPaths,
+			Key:   paths[pathIdx].Key(),
+		},
+		MaxBWCls:    sibra.BwCls(*bwCls),
+		MinBWCls:    1,
+		Destination: remote.Host,
+	}
+	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelF()
+	ws, err := c.mgr.WatchEphem(ctx, params)
+	if err != nil {
+		LogFatal("Error reserving ephemeral reservation", "err", err)
+	}
+	fmt.Printf("Using path:\n  %s\n", paths[pathIdx].Entry.Path.String())
+	return paths[pathIdx].Entry, ws
 }
 
 func setSignalHandler(closer io.Closer) {
