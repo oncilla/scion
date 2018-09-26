@@ -517,11 +517,13 @@ class SibraGenerator(object):
         self.ifid_map = ifid_map
 
         self.ifids = defaultdict(set)
+        self.core_list = []
         self.traffic_matrix = defaultdict(dict)
         self.reservations = defaultdict(dict)
         self.sibra_files = defaultdict(dict)
 
     def generate(self):
+        self._iterate(self._gen_core_list)
         self._iterate(self._gen_ifids)
         self._iterate(self._gen_traffic_matrix)
         self._iterate(self._gen_reservation)
@@ -531,6 +533,10 @@ class SibraGenerator(object):
     def _iterate(self, f):
         for isd_as, as_conf in self.topo_config["ASes"].items():
             f(TopoID(isd_as), as_conf)
+
+    def _gen_core_list(self, topo_id, as_conf):
+        if as_conf.get("core"):
+            self.core_list.append(topo_id)
 
     def _gen_ifids(self, topo_id, as_conf):
         for k in self.ifid_map[str(topo_id)]:
@@ -548,19 +554,23 @@ class SibraGenerator(object):
     def _gen_reservation(self, topo_id, as_conf):
         issuer = TopoID(as_conf.get('cert_issuer', str(topo_id)))
         if issuer != topo_id:
-            up = {
-                "IA": str(issuer),
-                "PathPredicate": "%s#0" % issuer,
-                "PathType": "Up",
-                "MinSize": 1,
-                "DesiredSize": 27,
-                "MaxSize": 30,
-                "RatioClass": 0,
-            }
-            down = up.copy()
-            down["PathType"] = "Down"
-            self.reservations[topo_id]["Up-%s" % issuer] = up
-            self.reservations[topo_id]["Down-%s" % issuer] = down
+            self.reservations[topo_id]["Up-%s" % issuer] = self._resv_entry(issuer)
+            self.reservations[topo_id]["Down-%s" % issuer] = self._resv_entry(issuer, "Down")
+        else:
+            for dst in (x for x in self.core_list if x != topo_id):
+                self.reservations[topo_id]["Core-%s" % dst] = self._resv_entry(dst, "Core")
+
+    def _resv_entry(self, ia, path_type="Up"):
+        # TODO(roosd): add path end properties
+        return {
+            "IA": str(ia),
+            "PathPredicate": "%s#0" % ia,
+            "PathType": path_type,
+            "MinSize": 1,
+            "DesiredSize": 27,
+            "MaxSize": 30,
+            "RatioClass": 1,
+        }
 
     def _gen_sibra_file(self, topo_id, as_conf):
         path_mat = os.path.join("", "sibra", "matrix.yml")
