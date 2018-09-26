@@ -188,6 +188,7 @@ func (h *ephemReqHandler) checkWhitelist(ia addr.IA, ip net.IP, pld *sbreq.Pld,
 	if r, ok := pld.Data.(*sbreq.EphemReq); ok {
 		if !h.whitelist.isAllowed(ia, ip) {
 			pld.Data = r.Fail(sbreq.ClientDenied, 0, currHop)
+			pld.Accepted = false
 			return false, nil
 		}
 		return true, nil

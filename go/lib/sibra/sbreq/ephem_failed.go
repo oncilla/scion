@@ -105,7 +105,7 @@ func (r *EphemFailed) Steady() bool {
 }
 
 func (r *EphemFailed) Len() int {
-	return r.ID.Len() + int(r.DataLen)
+	return int(r.DataLen)
 }
 
 func (r *EphemFailed) Type() DataType {

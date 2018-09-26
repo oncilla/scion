@@ -15,11 +15,14 @@
 package resvmgr
 
 import (
+	"flag"
+	"fmt"
+	"net"
+	"regexp"
 	"sync"
 
-	"net"
-
 	"github.com/scionproto/scion/go/lib/addr"
+	"github.com/scionproto/scion/go/lib/common"
 )
 
 type WhitListEntry bool
@@ -70,4 +73,78 @@ func iterateMap(m map[string]WhitListEntry, host net.IP) bool {
 		}
 	}
 	return false
+}
+
+var _ flag.Value = (*Net)(nil)
+
+var netRegexp = regexp.MustCompile(
+	`^(?P<ia>\d+-[\d:A-Fa-f]+),\[(?P<net>[^\]]+)\]$`)
+
+type Net struct {
+	IA  addr.IA
+	Net *net.IPNet
+}
+
+func (a *Net) String() string {
+	if a == nil {
+		return "<nil>"
+	}
+	s := fmt.Sprintf("%s,[%v]", a.IA, a.Net)
+	return s
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler
+func (a *Net) UnmarshalText(text []byte) error {
+	if len(text) == 0 {
+		*a = Net{}
+	}
+	other, err := NetFromString(string(text))
+	if err != nil {
+		return err
+	}
+	*a = *other
+	return nil
+}
+
+// NetFromString converts an sub network string of format isd-as,[CIDR]
+// (e.g., 1-ff00:0:300,[192.168.0.0/16]) to a Net.
+func NetFromString(s string) (*Net, error) {
+	parts, err := parseNet(s)
+	if err != nil {
+		return nil, err
+	}
+	ia, err := addr.IAFromString(parts["ia"])
+	if err != nil {
+		return nil, common.NewBasicError("Invalid IA string", err, "ia", ia)
+	}
+	_, ipnet, err := net.ParseCIDR(parts["net"])
+	if err != nil {
+		return nil, err
+	}
+	return &Net{IA: ia, Net: ipnet}, nil
+}
+
+func parseNet(s string) (map[string]string, error) {
+	result := make(map[string]string)
+	match := netRegexp.FindStringSubmatch(s)
+	if len(match) == 0 {
+		return nil, common.NewBasicError("Invalid address: regex match failed", nil, "addr", s)
+	}
+	for i, name := range netRegexp.SubexpNames() {
+		if i == 0 {
+			continue
+		}
+		result[name] = match[i]
+	}
+	return result, nil
+}
+
+// This method implements flag.Value interface
+func (a *Net) Set(s string) error {
+	other, err := NetFromString(s)
+	if err != nil {
+		return err
+	}
+	a.IA, a.Net = other.IA, other.Net
+	return nil
 }

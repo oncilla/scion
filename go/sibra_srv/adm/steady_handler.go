@@ -127,7 +127,9 @@ func AdmitSteadyResv(pkt *conf.ExtPkt, r *sbreq.SteadyReq) error {
 		r.Info.FailHop = pkt.Steady.SOFIndex
 		log.Info("Fail reservation", "id", pkt.Steady.GetCurrID())
 	}
-	r.Info.BwCls = res.AllocBw
+	if res.AllocBw < r.AccBw {
+		r.AccBw = res.AllocBw
+	}
 	r.OfferFields[pkt.Steady.SOFIndex].AllocBw = res.AllocBw
 	r.OfferFields[pkt.Steady.SOFIndex].MaxBw = res.MaxBw
 	r.OfferFields[pkt.Steady.SOFIndex].LineLen = sbresv.SOFieldLines

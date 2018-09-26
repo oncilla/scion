@@ -77,6 +77,10 @@ var (
 	verbose      = flag.Bool("v", false, "sets verbose output")
 	sciondFromIA = flag.Bool("sciondFromIA", false,
 		"SCIOND socket path from IA address:ISD-AS")
+	wl4 = flag.String("wl4", "0-0,[0.0.0.0/0]", "Whitelisted IPv4 subnets. All reservations"+
+		"are accepted by default.")
+	wl6 = flag.String("wl6", "0-0,[::/0]", "Whitelisted IPv6 subnets. All reservations"+
+		"are accepted by default.")
 	fileData []byte
 )
 
@@ -148,6 +152,12 @@ func validateFlags() {
 		} else {
 			log.Info("file argument is ignored for mode " + ModeServer)
 		}
+	}
+	if _, err := resvmgr.NetFromString(*wl4); err != nil {
+		LogFatal("Invalid IPv4 whitelist subnet", err)
+	}
+	if _, err := resvmgr.NetFromString(*wl6); err != nil {
+		LogFatal("Invalid IPv6 whitelist subnet", err)
 	}
 }
 
@@ -412,11 +422,10 @@ func (s *server) initResvMgr() {
 	if err != nil {
 		LogFatal("Unable to start reservation manager", err)
 	}
-	// FIXME(roosd): unhardcode this
-	_, ip4Net, _ := net.ParseCIDR("0.0.0.0/0")
-	_, ip6Net, _ := net.ParseCIDR("::/0")
-	s.mgr.AllowConnection(addr.IA{}, ip4Net)
-	s.mgr.AllowConnection(addr.IA{}, ip6Net)
+	wl4, _ := resvmgr.NetFromString(*wl4)
+	wl6, _ := resvmgr.NetFromString(*wl6)
+	s.mgr.AllowConnection(wl4.IA, wl4.Net)
+	s.mgr.AllowConnection(wl6.IA, wl6.Net)
 }
 
 func getSibraMode(a net.Addr) string {

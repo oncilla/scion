@@ -47,7 +47,7 @@ func Forward(pkt *conf.ExtPkt) error {
 	}
 	dst, err := GetAddrForIFID(ifids.EgIfid, pkt.Conf.Topo)
 	if err != nil {
-		return err
+		return common.NewBasicError("Unable to forward", err, "steady", pkt.Steady, "ifids", ifids)
 	}
 	// In steady setup packets, the border router does not update the SOFIndex
 	if base.Setup {

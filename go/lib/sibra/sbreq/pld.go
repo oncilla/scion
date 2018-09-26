@@ -86,10 +86,10 @@ func PldFromRaw(raw common.RawBytes) (*Pld, error) {
 			"expected", b.TotalLen, "actual", len(raw))
 	}
 	if err := b.parseData(raw[minLen:]); err != nil {
-		return nil, err
+		return nil, common.NewBasicError("Unable to parse data", err, "pld", b)
 	}
 	if err := b.parseAuths(raw[minLen+b.Data.Len():], int(b.NumHops)); err != nil {
-		return nil, err
+		return nil, common.NewBasicError("Unable to parse auths", err, "pld", b)
 	}
 	return b, nil
 }
