@@ -298,12 +298,11 @@ func (c *client) run() {
 	}
 	c.signalStream = newSignalStream(qstream)
 	log.Debug("Quic signal stream opened", "local", &local, "remote", &remote)
-	quit := make(chan struct{})
-	if ws != nil {
-		ws.DrainEvents(quit)
-	}
+	stop := make(chan struct{})
 	go c.send()
+	go c.signal(ws, stop)
 	c.read()
+	close(stop)
 }
 
 func (c *client) initResvMgr() {
@@ -370,7 +369,6 @@ func (c client) send() {
 		if i != 0 && *interval != 0 {
 			time.Sleep(*interval)
 		}
-		log.Info("sent i", "i", i)
 		reqMsg := requestMsg()
 		// Send ping message to destination
 		before := time.Now()
@@ -380,18 +378,50 @@ func (c client) send() {
 			log.Error("Unable to write", "err", err)
 			continue
 		}
-		if i == 6 {
-			reqMsg := requestMsg()
-			reqMsg.PingPong = "Hello"
-			err := c.signalStream.WriteSignal(reqMsg)
-			if err != nil {
-				log.Error("Unable to write signal", "err", err)
-				continue
+	}
+	// After sending the last ping, set a ReadDeadline on the stream
+	err := c.qstream.SetReadDeadline(time.Now().Add(*timeout))
+	if err != nil {
+		LogFatal("SetReadDeadline failed", "err", err)
+	}
+}
+
+func (c client) signal(ws *resvmgr.WatchState, stop chan struct{}) {
+	for {
+		select {
+		case <-stop:
+			return
+		case event := <-ws.Events:
+			switch event.Code {
+			case resvmgr.Quit:
+				log.Info("Quit reservation manager", "err", event.Error)
+			case resvmgr.ExtnExpired:
+				log.Info("Reservation expired", "err", event.Error)
+			case resvmgr.Error:
+				log.Error("Error occured", "err", event.Error)
+			case resvmgr.ExtnCleaned:
+				log.Debug("Reservation cleaned")
+			case resvmgr.ExtnUpdated:
+				ext, _ := ws.SyncResv.Load().GetExtn()
+				_, ephem := ext.(*sbextn.Ephemeral)
+				log.Debug("Notify server to use new extension", "ephem", ephem)
+				packed, err := ext.Pack()
+				if err != nil {
+					log.Error("Unable to pack extension", "err", err)
+					continue
+				}
+				err = c.signalStream.WriteSignal(&message{Data: packed})
+				if err != nil {
+					log.Error("Unable to write signal", "err", err)
+					continue
+				}
+			default:
+				log.Error("Unhandled event", "code", event.Code)
 			}
 		}
 	}
 	// After sending the last ping, set a ReadDeadline on the stream
-	err := c.qstream.SetReadDeadline(time.Now().Add(*timeout))
+	err := c.signalStream.qstream.SetReadDeadline(time.Now().Add(*timeout))
 	if err != nil {
 		LogFatal("SetReadDeadline failed", "err", err)
 	}
@@ -402,7 +432,6 @@ func (c client) read() {
 	for i := 0; i < *count || *count == 0; i++ {
 		msg, err := c.ReadMsg()
 		after := time.Now()
-		log.Info("got i", "i", i)
 		if err != nil {
 			if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
 				log.Debug("ReadDeadline missed", "err", err)
@@ -504,58 +533,28 @@ func getSibraMode(a net.Addr) string {
 
 func (s server) handleClient(qsess quic.Session) {
 	defer qsess.Close(nil)
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	// Accept ping stream first
 	qstream, err := qsess.AcceptStream()
-	if err != nil {
-		log.Error("Unable to accept signal quic stream", "err", err)
-		return
-	}
-	defer qstream.Close()
-
-	signalStream, err := qsess.AcceptStream()
 	if err != nil {
 		log.Error("Unable to accept quic stream", "err", err)
 		return
 	}
-	defer signalStream.Close()
-
-	qs := newQuicStream(qstream)
-	signal := newSignalStream(signalStream)
-	wg := sync.WaitGroup{}
-	wg.Add(1)
+	defer qstream.Close()
 	go func() {
-		for {
-			// Receive ping message
-			msg, err := signal.ReadSignal()
-			if err != nil {
-				qer := qerr.ToQuicError(err)
-				// We expect qerr.PeerGoingAway or io.EOF as normal termination conditions.
-				if qer.ErrorCode == qerr.PeerGoingAway ||
-					err == io.EOF {
-					log.Info("Quic peer disconnected", "err", err)
-					break
-				}
-				// NetworkIdleTimeOut if the peer exits ungracefully we will not be notified,
-				// and the session will time out.
-				if qer.ErrorCode == qerr.NetworkIdleTimeout {
-					log.Error("Quic connection timed out", "err", err)
-					break
-				}
-				log.Error("Unable to read", "err", err)
-				break
-			}
-			log.Info("signal", msg.PingPong)
-			//qsess.RemoteAddr().(*snet.Addr).Sibra = nil
-			// Send pong message
-			replyMsg := replyMsg(msg)
-			replyMsg.PingPong = "Hello"
-			err = signal.WriteSignal(replyMsg)
-			if err != nil {
-				log.Error("Unable to write", "err", err)
-				break
-			}
-		}
+		s.handlePingStream(qstream)
 		wg.Done()
 	}()
+	go func() {
+		s.handleSignalStream(qsess)
+		wg.Done()
+	}()
+	wg.Wait()
+}
+
+func (s server) handlePingStream(qstream quic.Stream) {
+	qs := newQuicStream(qstream)
 	for {
 		// Receive ping message
 		msg, err := qs.ReadMsg()
@@ -585,7 +584,64 @@ func (s server) handleClient(qsess quic.Session) {
 			break
 		}
 	}
-	wg.Wait()
+}
+
+func (s server) handleSignalStream(qsess quic.Session) {
+	signalStream, err := qsess.AcceptStream()
+	if err != nil {
+		log.Error("Unable to accept signal quic stream", "err", err)
+		return
+	}
+	defer signalStream.Close()
+	sig := newSignalStream(signalStream)
+	for {
+		// Receive ping message
+		msg, err := sig.ReadSignal()
+		log.Debug("Received signal")
+		if err != nil {
+			qer := qerr.ToQuicError(err)
+			// We expect qerr.PeerGoingAway or io.EOF as normal termination conditions.
+			if qer.ErrorCode == qerr.PeerGoingAway ||
+				err == io.EOF {
+				log.Info("Quic peer disconnected", "err", err)
+				break
+			}
+			// NetworkIdleTimeOut if the peer exits ungracefully we will not be notified,
+			// and the session will time out.
+			if qer.ErrorCode == qerr.NetworkIdleTimeout {
+				log.Error("Quic connection timed out", "err", err)
+				break
+			}
+			log.Error("Unable to read", "err", err)
+			break
+		}
+		base, err := sbextn.BaseFromRaw(msg.Data)
+		if err != nil {
+			log.Error("Unable to parse extension", "err", err)
+			break
+		}
+		var ext common.Extension
+		switch base.Steady {
+		case true:
+			var steady *sbextn.Steady
+			steady, err = sbextn.SteadyFromBase(base, msg.Data)
+			ext = steady
+			steady.Forward = false
+			steady.SOFIndex = steady.PathLens[0] + steady.PathLens[1] + steady.PathLens[2]
+		case false:
+			var ephem *sbextn.Ephemeral
+			ephem, err = sbextn.EphemeralFromBase(base, msg.Data)
+			ext = ephem
+			ephem.Forward = false
+			ephem.SOFIndex = uint8(ephem.TotalHops - 1)
+		}
+		if err != nil {
+			log.Error("Unable to parse extension", "err", err, "base", base)
+			break
+		}
+		qsess.RemoteAddr().(*snet.Addr).Sibra = ext
+		log.Debug("Updated SIBRA extension", "ephem", !base.Steady)
+	}
 }
 
 func (c *client) flushPath() error {

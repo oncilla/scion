@@ -32,6 +32,8 @@ const (
 	UnsupportedVersion = "Unsupported SIBRA version"
 	UnableSetMac       = "Unable to set mac"
 
+	minBaseLen = common.ExtnFirstLineLen
+
 	flagSteady     = 0x80
 	flagSetup      = 0x40
 	flagForward    = 0x20
@@ -121,6 +123,10 @@ type Base struct {
 // BaseFromRaw parses the first line of raw in order to distinguish if it is a
 // steady or ephemeral extension.
 func BaseFromRaw(raw common.RawBytes) (*Base, error) {
+	if len(raw) < minBaseLen {
+		return nil, common.NewBasicError("Raw is smaller than minimum length", nil,
+			"expected", minBaseLen, "actual", len(raw))
+	}
 	b := &Base{}
 	if err := b.parseFlags(raw[offFlags]); err != nil {
 		return nil, err

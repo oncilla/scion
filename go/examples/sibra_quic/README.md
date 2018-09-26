@@ -32,8 +32,7 @@ When running the client in interactive mode (using `-i`), the user is able to ch
 the path. Whether the path is SIBRA enabled is indicated.
 In the non-interactive mode, the client will abort if there is no SIBRA path.
 
-WARNING: quic is currently not supported properly. As quic does not expect the remote
-address to change, the SIBRA extension is not properly updated. After 16 seconds, the 
-server can no longer respond. The solution is a signaling channel, which notifies the 
-server and provides it with the new extension. The quic library leaks the remote 
-address, thus we can inject the new extension.
+XXX: The quic library does not expose a way to change the remote address. Also, the remote 
+address is not updated (contrary to rpt) when packets are received. To support quic we 
+deploy a dirty hack. The library leaks a pointer to the remote address. We open a quic 
+stream that is used to send the extension that the server is supposed to use.

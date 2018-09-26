@@ -64,7 +64,7 @@ func (h *ephemRepHandler) Deregister(key *notifyKey) {
 func (h *ephemRepHandler) Handle(r *infra.Request) {
 	saddr := r.Peer.(*snet.Addr)
 	pld := r.Message.(*sibra_mgmt.EphemRep)
-	h.Debug("Received reply", "addr", saddr, "req", pld)
+	h.Debug("Received reply", "addr", saddr)
 	if err := h.handle(saddr, pld); err != nil {
 		h.logDropRep(saddr, pld, err)
 	}
@@ -79,6 +79,7 @@ func (h *ephemRepHandler) handle(saddr *snet.Addr, pld *sibra_mgmt.EphemRep) err
 	if err != nil {
 		return err
 	}
+	log.Debug("Received event", "addr", saddr, "extn", event.extn, "pld", event.pld)
 	key, err := h.getNotifyKey(base, event.pld)
 	if err != nil {
 		return err
@@ -141,7 +142,7 @@ type ephemReqHandler struct {
 func (h *ephemReqHandler) Handle(r *infra.Request) {
 	saddr := r.Peer.(*snet.Addr)
 	pld := r.Message.(*sibra_mgmt.EphemReq)
-	h.Debug("Received request", "addr", saddr, "req", pld)
+	h.Debug("Received request", "addr", saddr)
 
 	pkt, err := h.handle(saddr, pld)
 	if err != nil {
@@ -162,6 +163,7 @@ func (h *ephemReqHandler) handle(saddr *snet.Addr, pld *sibra_mgmt.EphemReq) (*s
 	if err != nil {
 		return nil, err
 	}
+	log.Debug("Received event", "addr", saddr, "extn", event.extn, "pld", event.pld)
 	ok, err := h.checkWhitelist(pkt.SrcIA, pkt.SrcHost.IP(), event.pld, base.CurrHop)
 	if err != nil {
 		return nil, err
