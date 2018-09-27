@@ -246,11 +246,12 @@ func (s *AlgoSlow) AddSteadyResv(p sbalgo.AdmParams, alloc sibra.BwCls) error {
 	info := *p.Req.Info
 	info.BwCls = alloc
 	idx := &state.SteadyResvIdx{
-		Info:  info,
-		MinBW: p.Req.MinBw,
-		MaxBW: p.Req.MaxBw,
+		Info:     info,
+		MinBW:    p.Req.MinBw,
+		MaxBW:    p.Req.MaxBw,
+		Split:    p.Req.Split,
+		EndProps: p.Req.EndProps,
 	}
-
 	stEntry, ok := s.SteadyMap.Get(p.Extn.GetCurrID())
 	if !ok {
 		if p.Req.Info.Index != 0 {

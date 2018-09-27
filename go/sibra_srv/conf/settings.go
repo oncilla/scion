@@ -40,7 +40,8 @@ type Resv struct {
 	MinSize       sibra.BwCls
 	DesiredSize   sibra.BwCls
 	MaxSize       sibra.BwCls
-	RatioClass    sibra.SplitCls
+	SplitCls      sibra.SplitCls
+	EndProps      sibra.EndProps
 }
 
 func ReservationsFromRaw(b common.RawBytes) (ResvsMap, error) {

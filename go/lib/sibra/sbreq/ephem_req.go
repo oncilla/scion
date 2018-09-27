@@ -85,10 +85,10 @@ func (r *EphemReq) Fail(code FailCode, maxBw sibra.BwCls, failHop int) *EphemFai
 		Offers:   make([]sibra.BwCls, r.NumHops()),
 	}
 	rep.Info.FailHop = uint8(failHop)
-	rep.Info.BwCls = maxBw
 	for i := 0; i < int(failHop); i++ {
 		rep.Offers[i] = r.Block.Info.BwCls
 	}
+	rep.Offers[int(failHop)] = maxBw
 	return rep
 }
 

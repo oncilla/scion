@@ -13,38 +13,3 @@
 // limitations under the License.
 
 package sbreq
-
-import (
-	"testing"
-
-	. "github.com/smartystreets/goconvey/convey"
-
-	"github.com/scionproto/scion/go/lib/addr"
-	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/sibra"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
-)
-
-func Test_Fail(t *testing.T) {
-	Convey("NewSteadyReq should return correct request", t, func() {
-		req := &EphemReq{
-			ID: sibra.NewEphemID(addr.AS(0), nil),
-			Block: &sbresv.Block{
-				Info:     &sbresv.Info{},
-				SOFields: make([]*sbresv.SOField, 10),
-			},
-		}
-
-		rep := req.Fail(ClientDenied, 10, 9)
-		SoMsg("Size mismatch", rep.Len(), ShouldEqual, req.Len())
-
-		buf := make(common.RawBytes, rep.Len())
-		err := rep.Write(buf)
-		SoMsg("Err write", err, ShouldBeNil)
-		p, err := Parse(buf, 10)
-		SoMsg("Err parse", err, ShouldBeNil)
-		SoMsg("Size mismatch", p.Len(), ShouldEqual, rep.Len())
-		SoMsg("Same", p, ShouldResemble, rep)
-
-	})
-}

@@ -26,7 +26,7 @@ const (
 	offEphemFailedDataLen = sbresv.InfoLen
 	offEphemFailedHop     = offEphemFailedDataLen + 2
 	offEphemFailedCode    = offEphemFailedHop + 1
-	offEphemFailedOffers  = offEphemFailedHop + 1
+	offEphemFailedOffers  = offEphemFailedCode + 1
 )
 
 var _ Data = (*EphemFailed)(nil)
@@ -98,6 +98,19 @@ func EphemFailedFromRaw(raw common.RawBytes, setup bool, numHops int) (*EphemFai
 		e.Offers[i] = sibra.BwCls(raw[off+i])
 	}
 	return e, nil
+}
+
+func (r *EphemFailed) MinOffer() sibra.BwCls {
+	if len(r.Offers) < 1 {
+		return 0
+	}
+	offer := r.Offers[0]
+	for _, v := range r.Offers {
+		if offer > v {
+			offer = v
+		}
+	}
+	return offer
 }
 
 func (r *EphemFailed) Steady() bool {

@@ -392,7 +392,7 @@ func failEphemResv(pkt *conf.ExtPkt, base *sbextn.Base, res sbalgo.EphemRes) {
 		pkt.Pld.Data = r.Fail(res.FailCode, res.MaxBw, base.CurrHop)
 		pkt.Pld.Accepted = false
 		// TODO(roosd): remove
-		log.Debug("I'm failing the reservation", "res", res)
+		log.Debug("I'm failing the reservation", "res", res, "data", pkt.Pld.Data)
 	} else {
 		r := pkt.Pld.Data.(*sbreq.EphemFailed)
 		if r.FailCode < res.FailCode {

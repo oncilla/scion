@@ -258,9 +258,8 @@ func (s *EphemSetup) HandleRep(event notifyEvent) (bool, error) {
 		s.entry.ephemMeta.timestamp = time.Now()
 		s.entry.ephemMeta.state = ephemExists
 	case *sbreq.EphemFailed:
-		// FIXME(roosd): Determine error based on fail code
 		s.entry.ephemMeta.lastFailCode = r.FailCode
-		s.entry.ephemMeta.lastMaxBW = r.Info.BwCls
+		s.entry.ephemMeta.lastMaxBW = r.MinOffer()
 		s.entry.ephemMeta.timestamp = time.Now()
 		return false, nil
 	}
@@ -332,7 +331,7 @@ func (r *EphemRenew) HandleRep(event notifyEvent) (bool, error) {
 	case *sbreq.EphemFailed:
 		// FIXME(roosd): Determine error based on fail code
 		r.entry.ephemMeta.lastFailCode = request.FailCode
-		r.entry.ephemMeta.lastMaxBW = request.Info.BwCls
+		r.entry.ephemMeta.lastMaxBW = request.MinOffer()
 		r.entry.ephemMeta.timestamp = time.Now()
 		return false, nil
 	}

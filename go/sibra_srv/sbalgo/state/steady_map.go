@@ -28,28 +28,9 @@ const (
 	keysSize             = 100
 )
 
-// TODO(roosd): Allocation is done naively. The SIBRA service should take
-// pending reservations into account in order to prevent reserving to much bandwidth!
-//
-// Key insight: The dealloc ring only needs to be altered if the next dealloc entry is at
-// now + 1 and we are near to the tick change.
-//
-// Algo to find the dealloc ticks:
-//
-// list = [(bwCls, exp_time)...] for all indexes
-// sort(list) by bwCls and exp_time both descending
-// d := 0
-// deallocs = [(diff, exp_time)]
-// for i:=1; i < len(list)-1; i++ {
-// 		if list[d].exp_time < list[i].exp_time && list[d].bw > list[i].bw{
-//			deallocs = append(deallocs, (list[d].bw-list[i], list[__d__].exp_time))
-// 		}
-// }
 type SteadyResvMap struct {
 	*steadyResvMap
 }
-
-// TODO(roosd) add cleanup routine
 
 type steadyResvMap struct {
 	resvs      map[string]*SteadyResvEntry

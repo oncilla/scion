@@ -16,6 +16,7 @@ package sibra
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
@@ -49,6 +50,9 @@ const (
 
 	// BwFactor is the SIBRA bandwidth factor
 	BwFactor = 16 * 1000
+
+	// MaxRLC is the maximum request latency class. It equates to 4 seconds.
+	MaxRLC RLC = 12
 )
 
 // ID is the SIBRA reservation id. It can either be a steady id
@@ -193,9 +197,6 @@ func (b BwCls) Bps() Bps {
 	return Bps(math.Floor(BwFactor * base))
 }
 
-// MaxRLC is the maximum request latency class. It equates to 4 seconds.
-const MaxRLC RLC = 12
-
 // RLC is the SIBRA request latency class. It allows an estimation how long
 // a reservation request will take to travel to the end of the path
 // and back including the processing times.
@@ -258,7 +259,73 @@ func (s State) String() string {
 	return fmt.Sprintf("UNKNOWN (%d)", s)
 }
 
-// TODO(roosd): implement.
+// SplitCls indicates the split between steady control and ephemeral traffic
+// inside a steady tube.
 type SplitCls uint8
 
+func (c SplitCls) CtrlFctr() float64 {
+	return 1 / math.Sqrt(float64(int(1<<c)))
+}
+
+func (c SplitCls) EphemFctr() float64 {
+	return 1 - c.CtrlFctr()
+}
+
+const (
+	StartLocal    EndProps = 0x10
+	StartTransfer EndProps = 0x20
+	EndLocal      EndProps = 0x01
+	EndTransfer   EndProps = 0x02
+
+	Start    = "Start"
+	End      = "End"
+	Local    = "L"
+	Transfer = "T"
+)
+
+// EndProps indicates the path-end properties.
 type EndProps uint8
+
+func (e EndProps) StartLocal() bool {
+	return (e & StartLocal) != 0
+}
+
+func (e EndProps) StartTransfer() bool {
+	return (e & StartTransfer) != 0
+}
+
+func (e EndProps) EndLocal() bool {
+	return (e & EndLocal) != 0
+}
+
+func (e EndProps) EndTransfer() bool {
+	return (e & EndTransfer) != 0
+}
+
+func EndPropsFromMap(m map[string][]string) EndProps {
+	var props EndProps
+	for k, v := range m {
+		for _, s := range v {
+			switch {
+			case k == Start && s == Local:
+				props |= StartLocal
+			case k == Start && s == Transfer:
+				props |= StartTransfer
+			case k == End && s == Local:
+				props |= EndLocal
+			case k == End && s == Transfer:
+				props |= EndTransfer
+			}
+		}
+	}
+	return props
+}
+
+func (e *EndProps) UnmarshalJSON(data []byte) error {
+	var m map[string][]string
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	*e = EndPropsFromMap(m)
+	return nil
+}

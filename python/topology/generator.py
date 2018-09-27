@@ -569,7 +569,11 @@ class SibraGenerator(object):
             "MinSize": 1,
             "DesiredSize": 27,
             "MaxSize": 30,
-            "RatioClass": 1,
+            "SplitCls": 8,
+            "EndProps": {
+                "Start": ["L", "T"],
+                "End": ["L", "T"]
+            }
         }
 
     def _gen_sibra_file(self, topo_id, as_conf):

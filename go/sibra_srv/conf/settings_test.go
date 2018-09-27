@@ -91,6 +91,6 @@ func Test_SettingsFromRaw(t *testing.T) {
 		SoMsg("MinSize", r.MinSize, ShouldEqual, 0)
 		SoMsg("MaxSize", r.MaxSize, ShouldEqual, 12)
 		SoMsg("DesiredSize", r.DesiredSize, ShouldEqual, 12)
-		SoMsg("Ratio", r.RatioClass, ShouldEqual, 2)
+		SoMsg("Ratio", r.SplitCls, ShouldEqual, 2)
 	})
 }*/

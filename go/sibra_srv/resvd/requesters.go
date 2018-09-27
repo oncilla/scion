@@ -71,8 +71,6 @@ type Reqstr struct {
 	block   *sbresv.Block
 	timeout time.Duration
 	idx     sibra.Index
-	props   sibra.EndProps
-	split   sibra.SplitCls
 }
 
 func (r *Reqstr) Run(i ReqstrI) {
@@ -183,8 +181,10 @@ func (r *Reqstr) OnTimeout() {
 
 type ResvReqstr struct {
 	*Reqstr
-	min sibra.BwCls
-	max sibra.BwCls
+	min   sibra.BwCls
+	max   sibra.BwCls
+	props sibra.EndProps
+	split sibra.SplitCls
 }
 
 func (r *ResvReqstr) handleRep(pkt *conf.ExtPkt) error {

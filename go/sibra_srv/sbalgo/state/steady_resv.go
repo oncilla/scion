@@ -216,13 +216,20 @@ func (e *SteadyResvEntry) PromoteToActive(idx sibra.Index, info *sbresv.Info) er
 		return common.NewBasicError(InvalidState, nil,
 			"expected", sibra.StatePending, "actual", sub.State)
 	}
+	ephemBw := uint64(sub.Split.EphemFctr() * float64(sub.Info.BwCls.Bps()))
 	if e.EphemeralBW != nil {
 		// Adjust ephemeral bandwidth if possible.
-		if err := e.EphemeralBW.SetTotal(uint64(sub.Info.BwCls.Bps())); err != nil {
+		if err := e.EphemeralBW.SetTotal(ephemBw); err != nil {
 			return err
 		}
 	} else {
-		e.setEphemeralBWProvider(sub.Info.BwCls)
+		e.EphemeralBW = &BWProvider{
+			Total: ephemBw,
+			deallocRing: deallocRing{
+				currTick: sibra.CurrentTick(),
+				freeRing: make([]uint64, sibra.MaxEphemTicks*2),
+			},
+		}
 	}
 	// Remove invalidated indexes.
 	for i := e.ActiveIndex; i != idx; i = (i + 1) % sibra.NumIndexes {
@@ -232,16 +239,6 @@ func (e *SteadyResvEntry) PromoteToActive(idx sibra.Index, info *sbresv.Info) er
 	sub.State = sibra.StateActive
 	e.cleanUp(time.Now())
 	return nil
-}
-
-func (e *SteadyResvEntry) setEphemeralBWProvider(cls sibra.BwCls) {
-	e.EphemeralBW = &BWProvider{
-		Total: uint64(cls.Bps()),
-		deallocRing: deallocRing{
-			currTick: sibra.CurrentTick(),
-			freeRing: make([]uint64, sibra.MaxEphemTicks*2),
-		},
-	}
 }
 
 // TODO(roosd): promote void -> need to take care of ephemeral BW provider
@@ -313,6 +310,8 @@ type SteadyResvIdx struct {
 	MinBW      sibra.BwCls
 	MaxBW      sibra.BwCls
 	State      sibra.State
+	Split      sibra.SplitCls
+	EndProps   sibra.EndProps
 	SOFCreated bool
 }
 
