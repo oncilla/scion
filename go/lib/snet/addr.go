@@ -91,7 +91,7 @@ func (a *Addr) Copy() *Addr {
 	if a.Path != nil {
 		newA.Path = a.Path.Copy()
 	}
-	// XXX(roosd): dirty hack
+	// XXX(roosd): Hack to allow SibraResv be shared between addresses.
 	newA.SibraResv = a.SibraResv
 	if a.Sibra != nil {
 		newA.Sibra = a.Sibra.Copy()

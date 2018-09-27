@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"time"
 
+	"bytes"
+
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/ctrl/sibra_mgmt"
@@ -83,8 +85,10 @@ func (r *resolver) fetchSteadyResv(ctx context.Context,
 		for _, steadyId := range steadyIds {
 			if meta := r.store.getSteadyMeta(steadyId); meta != nil {
 				meta.Lock()
-				// TODO(roosd): check timestamp
-				if meta.Meta.Expiry().Before(now) {
+				// TODO(roosd): clean up store.
+				if meta.Meta.Expiry().Before(now) &&
+					meta.timestamp.Add(5*time.Second).Before(time.Now()) &&
+					bytes.Equal(meta.Meta.SegID(), reqs[i].SegID) {
 					bmetas[i] = meta.Meta
 				}
 				meta.Unlock()
@@ -164,7 +168,7 @@ func (r *resolver) getSteadyReqs(path *spathmeta.AppPath) ([]*sibra_mgmt.SteadyR
 		ifs := (*pIfs)[1 : len(*pIfs)-1]
 		start, end = end, end+len(ifs)
 		if infos[i].Peer {
-			// FIXME(roosd): support peering paths
+			// FIXME(roosd): Peering paths are not supported currently.
 			return nil, common.NewBasicError("Peering links not supported yet", nil)
 		}
 		pt := sibra.PathTypeUp

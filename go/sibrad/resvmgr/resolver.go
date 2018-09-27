@@ -108,10 +108,10 @@ func (r *resolver) handle() (bool, error) {
 			entry.syncResv.UpdateEphem(nil)
 		}
 		switch entry.ephemMeta.state {
+		case ephemRequested, cleanUp:
+			// Ignore. Need to wait until the state changes.
 		case start:
 			return r.setupEphem(entry, path, localSvcSB)
-		case ephemRequested:
-		case cleanUp:
 		case ephemExists:
 			ext := entry.syncResv.Load().Ephemeral
 			if ext == nil || ext.Expiry().Before(time.Now()) {
@@ -125,18 +125,20 @@ func (r *resolver) handle() (bool, error) {
 }
 
 func (r *resolver) setupNewPath(entry *resvEntry) (bool, error) {
-	// TODO(roosd): remove request from the steady id mapping. etc
-	return true, common.NewBasicError("Setting up path not implemented", nil, "key", r.key)
+	// FIXME(roosd): The steady meta possibly needs to be removed from the store
+	return true, common.NewBasicError("Setting up new path not implemented", nil, "key", r.key)
 }
 
 // setupEphem starts setup requester. It assumes that entry is already locked.
 func (r *resolver) setupEphem(entry *resvEntry, p *spathmeta.AppPath, sb *snet.Addr) (bool, error) {
 	bwCls := entry.ephemMeta.maxBwCls
 	if entry.ephemMeta.lastFailCode != sbreq.FailCodeNone {
-		bwCls = maxBwCls(entry.ephemMeta.lastMaxBW, entry.ephemMeta.minBwCls)
+		bwCls = maxBwCls(entry.ephemMeta.lastMaxBw, entry.ephemMeta.minBwCls)
 	}
-	// FIXME(roosd): based on rtt class.
-	timeout := time.Second
+	steady := entry.syncResv.Load().Steady
+	if steady == nil {
+		return false, common.NewBasicError("Unable to steady reservation in syncResv", nil)
+	}
 	ephemId := sibra.NewEphemIDRand(snet.DefNetwork.IA().A)
 	reqstr := &EphemSetup{
 		reserver: &reserver{
@@ -151,13 +153,13 @@ func (r *resolver) setupEphem(entry *resvEntry, p *spathmeta.AppPath, sb *snet.A
 				dstIA:      p.Entry.Path.DstIA(),
 				srcHost:    r.conn.LocalAddr().(*snet.Addr).Host,
 				dstHost:    entry.ephemMeta.remote,
-				timeout:    timeout,
+				timeout:    combineRLC(steady),
 
 				succFunc: func(_ reqstrI) {
 					r.handleResvSucc(entry)
 				},
-				failFunc: func(_ reqstrI) {
-					r.handleResvFail(entry, start)
+				failFunc: func(i reqstrI) {
+					r.handleResvFail(entry, start, i.GetPld().Data)
 				},
 				errFunc: func(err error, _ reqstrI) {
 					r.handleSetupErr(entry, err)
@@ -195,8 +197,6 @@ func (r *resolver) handleSetupTimeout(entry *resvEntry, request *sbreq.EphemReq,
 	if entry.ephemMeta.state == ephemRequested {
 		entry.ephemMeta.state = cleanUp
 	}
-	// FIXME(roosd): based on rtt class.
-	timeout := time.Second
 	failedInfo := request.Block.Info.Copy()
 	failedInfo.FailHop = 0
 	reqstr := &EphemCleanSetup{
@@ -213,7 +213,7 @@ func (r *resolver) handleSetupTimeout(entry *resvEntry, request *sbreq.EphemReq,
 				dstIA:      dstIa,
 				srcHost:    r.conn.LocalAddr().(*snet.Addr).Host,
 				dstHost:    entry.ephemMeta.remote,
-				timeout:    timeout,
+				timeout:    request.Block.Info.RLC.Duration(),
 
 				succFunc: func(_ reqstrI) {
 					r.handleCleanSucc(entry, start)
@@ -240,6 +240,7 @@ func (r *resolver) handleSetupTimeout(entry *resvEntry, request *sbreq.EphemReq,
 
 func (r *resolver) needRenewal(ext *sbextn.Ephemeral, entry *resvEntry) bool {
 	// FIXME(roosd): Add check if bandwidth class is as close to desired as possible.
+	// Make sure to rate limit to 3 index per expiration SIBRA tick.
 	return !sibra.CurrentTick().Add(1).Time().Before(ext.Expiry())
 }
 
@@ -248,10 +249,12 @@ func (r *resolver) renewEphem(entry *resvEntry, ext *sbextn.Ephemeral,
 
 	bwCls := entry.ephemMeta.maxBwCls
 	if entry.ephemMeta.lastFailCode != sbreq.FailCodeNone {
-		bwCls = maxBwCls(entry.ephemMeta.lastMaxBW, entry.ephemMeta.minBwCls)
+		bwCls = maxBwCls(entry.ephemMeta.lastMaxBw, entry.ephemMeta.minBwCls)
 	}
-	// FIXME(roosd): based on rtt class.
-	timeout := time.Second
+	ephem := entry.syncResv.Load().Ephemeral
+	if ephem == nil {
+		return false, common.NewBasicError("Unable to load ephem reservation from syncResv", nil)
+	}
 	ephemId := sibra.NewEphemIDRand(snet.DefNetwork.IA().A)
 	reqstr := &EphemRenew{
 		reserver: &reserver{
@@ -267,15 +270,15 @@ func (r *resolver) renewEphem(entry *resvEntry, ext *sbextn.Ephemeral,
 				dstIA:      p.Entry.Path.DstIA(),
 				srcHost:    r.conn.LocalAddr().(*snet.Addr).Host,
 				dstHost:    entry.ephemMeta.remote,
-				timeout:    timeout,
+				timeout:    ephem.ActiveBlocks[0].Info.RLC.Duration(),
 
 				succFunc: func(_ reqstrI) {
 					r.Debug("Ephemeral extension updated", "ext",
 						entry.syncResv.Load().Ephemeral.ActiveBlocks[0])
 					r.notify(&Event{Code: ExtnUpdated})
 				},
-				failFunc: func(_ reqstrI) {
-					r.handleResvFail(entry, ephemExists)
+				failFunc: func(i reqstrI) {
+					r.handleResvFail(entry, ephemExists, i.GetPld().Data)
 				},
 				errFunc: func(err error, _ reqstrI) {
 					r.handleResvErr(entry, ephemExists, err)
@@ -300,8 +303,6 @@ func (r *resolver) handleRenewTimeout(entry *resvEntry, ephemId sibra.ID,
 	if entry.ephemMeta.state == ephemRequested {
 		entry.ephemMeta.state = cleanUp
 	}
-	// FIXME(roosd): based on rtt class.
-	timeout := time.Second
 	failedInfo := request.Block.Info.Copy()
 	failedInfo.FailHop = 0
 	reqstr := &EphemCleanRenew{
@@ -318,7 +319,7 @@ func (r *resolver) handleRenewTimeout(entry *resvEntry, ephemId sibra.ID,
 				dstIA:      dstIa,
 				srcHost:    r.conn.LocalAddr().(*snet.Addr).Host,
 				dstHost:    entry.ephemMeta.remote,
-				timeout:    timeout,
+				timeout:    request.Block.Info.RLC.Duration(),
 
 				succFunc: func(_ reqstrI) {
 					r.handleCleanSucc(entry, start)
@@ -361,11 +362,9 @@ func (r *resolver) handleResvErr(entry *resvEntry, nextState state, err error) {
 	r.refire(r.timers.ErrorRefire)
 }
 
-func (r *resolver) handleResvFail(entry *resvEntry, nextState state) {
+func (r *resolver) handleResvFail(entry *resvEntry, nextState state, data sbreq.Data) {
 	entry.Lock()
 	defer entry.Unlock()
-	// TODO(rooosd): remove
-	r.Info("I failed", "code", entry.ephemMeta.lastFailCode)
 	if entry.ephemMeta.state == ephemRequested {
 		entry.ephemMeta.state = nextState
 	}
@@ -374,17 +373,25 @@ func (r *resolver) handleResvFail(entry *resvEntry, nextState state) {
 		r.quit(common.NewBasicError("Client denied reservation", nil))
 		return
 	case sbreq.SteadyOutdated, sbreq.SteadyNotExists:
-		// FIXME(roosd): handle properly
+		steady := entry.syncResv.Load().Steady
 		entry.syncResv.UpdateSteady(nil)
+		if steady != nil {
+			for i, id := range steady.IDs {
+				meta := r.store.getSteadyMeta(id)
+				if meta != nil && meta.Meta.Block.Info.Index == steady.ActiveBlocks[i].Info.Index {
+					r.store.removeSteadyMeta(id)
+				}
+			}
+		}
 	case sbreq.InvalidInfo:
 		r.notify(&Event{
 			Code:  Error,
-			Error: common.NewBasicError("Invalid info", nil, "info", entry.ephemMeta.lastReq),
+			Error: common.NewBasicError("Invalid info", nil, "data", data),
 		})
 	case sbreq.BwExceeded:
-		if entry.ephemMeta.lastMaxBW < entry.ephemMeta.minBwCls {
+		if entry.ephemMeta.lastMaxBw < entry.ephemMeta.minBwCls {
 			r.quit(common.NewBasicError("Min available below requested", nil,
-				"minReq", entry.ephemMeta.minBwCls, "minAvail", entry.ephemMeta.lastMaxBW))
+				"minReq", entry.ephemMeta.minBwCls, "minAvail", entry.ephemMeta.lastMaxBw))
 			return
 		}
 	}
@@ -397,7 +404,7 @@ func (r *resolver) handleCleanSucc(entry *resvEntry, nextState state) {
 		entry.ephemMeta.state = nextState
 	}
 	entry.Unlock()
-	r.Debug("Cleaned ephemeral extension")
+	r.Info("Cleaned ephemeral extension")
 	r.notify(&Event{Code: ExtnCleaned})
 	r.refire(r.timers.ErrorRefire)
 }
@@ -452,6 +459,14 @@ func (r *resolver) quit(err error) {
 		close(r.events)
 		r.closed = true
 	}
+}
+
+func combineRLC(steady *sbextn.Steady) time.Duration {
+	var t time.Duration
+	for _, v := range steady.ActiveBlocks {
+		t += v.Info.RLC.Duration()
+	}
+	return t
 }
 
 func maxBwCls(a, b sibra.BwCls) sibra.BwCls {

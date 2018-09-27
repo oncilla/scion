@@ -124,7 +124,7 @@ func (r *Reserver) isRecent(config *conf.Conf, e *state.SteadyResvEntry) bool {
 	if idx == nil || idx.State != sibra.StateActive {
 		return false
 	}
-	// XXX(roosd): Remove "false" for constant renewal requests
+	// XXX(roosd): Remove "false" for constant renewal requests in testing environment.
 	ia, _ := addr.IAFromString("2-ff00:0:222")
 	if ia.Eq(config.PublicAddr.IA) && false {
 		if time.Until(idx.Info.ExpTick.Time()) < (sibra.MaxSteadyTicks-4)*sibra.TickDuration {

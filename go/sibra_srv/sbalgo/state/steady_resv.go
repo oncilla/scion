@@ -32,39 +32,41 @@ const (
 	InvalidState     = "Invalid state"
 )
 
-// TODO(roosd): Make sure deadlocks cannot occure -> need for locking hierarchy
-//
-
+// SteadyResvEntry holds general information about a steady reservation and
+// all reservation indexes.
 type SteadyResvEntry struct {
 	sync.RWMutex
 	// Src is the reservation source AS.
 	Src addr.IA
 	// Id is the reservation ID.
 	Id sibra.ID
-	// Ifids TODO(roosd)
+	// Ifids represent the ingress and egress interfaces of the reservation.
 	Ifids sbalgo.IFTuple
-	// Indexes TODO(roosd)
+	// Indexes keeps track of the indexes.
 	Indexes [sibra.NumIndexes]*SteadyResvIdx
-	// SibraAlgo TODO(roosd)
+	// SibraAlgo is the SIBRA algorithm. The pointer is kept to return bandwidth.
 	SibraAlgo sbalgo.Algo
-	// TODO(roosd)
+	// BaseResv points to the base reservation in a telescope.
 	BaseResv *SteadyResvEntry
-	// TODO(roosd)
+	// List of telescopes that use this reservation as base.
 	Telescopes []*SteadyResvEntry
 	// Ephemeral Bandwidth
 	EphemeralBW *BWProvider
-	// TODO(roosd)
+	// EphemResvMap keeps track of ephemeral reservations.
 	EphemResvMap *EphemResvMap
-	// TODO(roosd)
+	// Allocated indicates the amount of bandwidth that is allocated by this reservation
+	// and was used to compute the last admission decision.
 	Allocated sibra.Bps
-	// TODO(roosd)
+	// LastMax keeps track of the maximum bandwidth class that was used to compute the
+	// last admission decision.
 	LastMax sibra.Bps
-	// TODO(roosd)
+	// ActiveIndex indicates the currently active reservation index.
 	ActiveIndex sibra.Index
 	// Cache indicates if the Allocated and LastMax are cached.
 	Cache bool
 }
 
+// NeedsCleanUp indicates if a cleanup is necessary and bandwidth can be returned.
 func (e *SteadyResvEntry) NeedsCleanUp(now time.Time) bool {
 	e.Lock()
 	defer e.Unlock()
@@ -75,7 +77,8 @@ func (e *SteadyResvEntry) needsCleanUp(now time.Time) bool {
 	return e.LastMax != e.maxBw(now) || e.allocBw(now) != e.Allocated || e.expired(now)
 }
 
-// CleanUp assumes that the call has the lock for SibraAlgo.
+// CleanUp removes voided indexes and calls the SibraAlgo to update its state.
+// CleanUp assumes that the caller has the lock for SibraAlgo.
 func (e *SteadyResvEntry) CleanUp(now time.Time) {
 	e.Lock()
 	defer e.Unlock()
@@ -117,6 +120,7 @@ func (e *SteadyResvEntry) cleanUp(now time.Time) {
 	e.SibraAlgo.CleanSteadyResv(c)
 }
 
+// Expired checks if the steady reservation has expired.
 func (e *SteadyResvEntry) Expired(now time.Time) bool {
 	e.RLock()
 	defer e.RUnlock()
@@ -144,12 +148,15 @@ func (e *SteadyResvEntry) AddIdx(idx *SteadyResvIdx) error {
 	return nil
 }
 
+// DelIdx removes an index. It assumes that the SibraAlgo cleanup is done by the
+// caller itself. (Make sure to understand the implications!)
 func (e *SteadyResvEntry) DelIdx(idx sibra.Index) {
 	e.Lock()
 	defer e.Unlock()
 	e.Indexes[idx] = nil
 }
 
+// PromoteToSOFCreated promotes an index to the sof created state.
 func (e *SteadyResvEntry) PromoteToSOFCreated(info *sbresv.Info) error {
 	e.Lock()
 	defer e.Unlock()
@@ -178,6 +185,7 @@ func (e *SteadyResvEntry) PromoteToSOFCreated(info *sbresv.Info) error {
 	return nil
 }
 
+// PromoteToPending promotes a temporary reservation to the pending state.
 func (e *SteadyResvEntry) PromoteToPending(idx sibra.Index) error {
 	e.Lock()
 	defer e.Unlock()
@@ -186,7 +194,6 @@ func (e *SteadyResvEntry) PromoteToPending(idx sibra.Index) error {
 		return common.NewBasicError(IndexNonExistent, nil, "idx", idx)
 	}
 	if sub.State == sibra.StatePending {
-		// FIXME(roosd): Limit the time this is possible
 		return nil
 	}
 	if sub.State != sibra.StateTemp {
@@ -199,6 +206,7 @@ func (e *SteadyResvEntry) PromoteToPending(idx sibra.Index) error {
 	return nil
 }
 
+// PromoteToActive promotes a pending reservation to the active state.
 func (e *SteadyResvEntry) PromoteToActive(idx sibra.Index, info *sbresv.Info) error {
 	e.Lock()
 	defer e.Unlock()
@@ -241,8 +249,8 @@ func (e *SteadyResvEntry) PromoteToActive(idx sibra.Index, info *sbresv.Info) er
 	return nil
 }
 
-// TODO(roosd): promote void -> need to take care of ephemeral BW provider
-
+// CollectTempIndex collects a temporary index and returns the allocated bandwidth
+// to the SIBRA algorithm.
 func (e *SteadyResvEntry) CollectTempIndex(idx sibra.Index) error {
 	e.SibraAlgo.Lock()
 	defer e.SibraAlgo.Unlock()
@@ -260,6 +268,8 @@ func (e *SteadyResvEntry) CollectTempIndex(idx sibra.Index) error {
 	return nil
 }
 
+// MaxBw returns the maximum of the maximum requested bandwidth classes for all
+// non-void indexes.
 func (e *SteadyResvEntry) MaxBw() sibra.Bps {
 	e.Lock()
 	defer e.Unlock()
@@ -276,6 +286,8 @@ func (e *SteadyResvEntry) maxBw(now time.Time) sibra.Bps {
 	return max.Bps()
 }
 
+// MaxBw returns the maximum of the allocated bandwidth classes for all
+// non-void indexes.
 func (e *SteadyResvEntry) AllocBw() sibra.Bps {
 	e.Lock()
 	defer e.Unlock()
@@ -292,6 +304,7 @@ func (e *SteadyResvEntry) allocBw(now time.Time) sibra.Bps {
 	return max.Bps()
 }
 
+// NonVoidIdxs returns the number of non-void indexes for the steady reservation.
 func (e *SteadyResvEntry) NonVoidIdxs(now time.Time) int {
 	e.Lock()
 	defer e.Unlock()
@@ -304,8 +317,8 @@ func (e *SteadyResvEntry) NonVoidIdxs(now time.Time) int {
 	return c
 }
 
+// SteadyResvIdx holds information about a specific reservation index.
 type SteadyResvIdx struct {
-	// TODO(roosd): comments
 	Info       sbresv.Info
 	MinBW      sibra.BwCls
 	MaxBW      sibra.BwCls

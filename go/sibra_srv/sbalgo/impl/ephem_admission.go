@@ -26,6 +26,7 @@ import (
 
 var _ sbalgo.EphemAdm = (*ephemAdm)(nil)
 
+// XXX(roosd): this code is really ugly
 type ephemAdm struct {
 	*state.SibraState
 }

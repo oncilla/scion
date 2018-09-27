@@ -33,7 +33,8 @@ type SibraState struct {
 	InIfids map[common.IFIDType]map[common.IFIDType]struct{}
 	// Infos maps interfaces to bandwidth information.
 	Infos map[common.IFIDType]IFInfo
-	// TransitCap is the TODO(roosd)
+	// TransitCap keeps track of the allocated bandwidth between two
+	// interfaces.
 	TransitCap map[sbalgo.IFTuple]*IFState
 	// SteadyMap keeps track of steady reservations.
 	SteadyMap *SteadyResvMap
@@ -86,6 +87,8 @@ func (s *SibraState) addTransitCap(mat Matrix, in, eg common.IFIDType, inT, egT 
 	if eg != in {
 		s.InIfids[eg][in] = struct{}{}
 	}
+	// XXX(roosd): transit capacity is not respected currently, only the
+	// ingress and egress capacities.
 	s.TransitCap[ifids] = &IFState{
 		Total:     bps,
 		Unlimited: true,

@@ -53,8 +53,8 @@ func (m *TempTable) Set(id sibra.ID, idx sibra.Index, e *TempTableEntry, exp tim
 }
 
 func (m *TempTable) Delete(id sibra.ID, idx sibra.Index) {
-	// XXX(roosd): this is racy. However, SteadyResvEntry is protected
-	// against deletion if the state is not temporary
+	// This is looks racy. However, SteadyResvEntry is not cleaned
+	// if the state is not temporary. Thus, this is fine.
 	entry, ok := m.cache.Get(m.toKey(id, idx))
 	if !ok {
 		return
@@ -75,8 +75,6 @@ func tempOnEvict(key string, value interface{}) {
 	var err error
 	entry.RLock()
 	if !entry.deleted {
-		// TODO(roosd): remove
-		//log.Debug("Evicting expired pending reservation", "key", key)
 		err = entry.ResvMapEntry.CollectTempIndex(entry.Idx)
 	}
 	entry.RUnlock()

@@ -146,8 +146,6 @@ func (r *Reqstr) sendPkt(pkt *conf.ExtPkt) error {
 		return common.NewBasicError("Wrote incomplete message", nil,
 			"expected", len(buf), "actual", written)
 	}
-	// TODO(roods): remove
-	r.Debug("Sent packet", "nextHopHost", nextHopHost, "port", nextHopPort)
 	return nil
 }
 
@@ -239,8 +237,8 @@ type SteadySetup struct {
 }
 
 func (s *SteadySetup) probeRLC() (sibra.RLC, error) {
-	// FIXME(roosd): calculate RLC
-	rlc := sibra.DurationToRLC(time.Second, false)
+	// FIXME(roosd): Probe RLC instead of using conservative value.
+	rlc := sibra.DurationToRLC(500*time.Millisecond, false)
 	s.timeout = rlc.Duration()
 	return rlc, nil
 }

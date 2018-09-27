@@ -31,8 +31,6 @@ type EphemResvMap struct {
 	*ephemResvMap
 }
 
-// TODO(roosd) add cleanup routine
-
 type ephemResvMap struct {
 	resvs     map[string]*EphemResvEntry
 	mu        sync.RWMutex
@@ -92,6 +90,7 @@ func (m *ephemResvMap) Delete(id sibra.ID) {
 }
 
 func (m *ephemResvMap) DeleteExpired() {
+	// XXX(roosd): Avoid locking the whole table
 	m.mu.Lock()
 	var evicted []*EphemResvEntry
 	now := time.Now()

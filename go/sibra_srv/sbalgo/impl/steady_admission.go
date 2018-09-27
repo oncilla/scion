@@ -34,11 +34,6 @@ func admitSteady(s sbalgo.Algo, p sbalgo.AdmParams, topo *topology.Topo) (sbalgo
 	// than capacity of the in or out link.
 	avail := s.Available(p.Ifids, p.Extn.GetCurrID())
 	ideal := s.Ideal(p)
-	// TODO(roosd): remove
-	doLog := false
-	if doLog {
-		logInfo("Sibra computation", p, avail, ideal, s)
-	}
 	if avail > ideal {
 		avail = ideal
 	}
@@ -53,13 +48,10 @@ func admitSteady(s sbalgo.Algo, p sbalgo.AdmParams, topo *topology.Topo) (sbalgo
 		return sbalgo.SteadyRes{}, err
 	}
 	res.Accepted = true
-	// TODO(roosd): remove
-	if doLog {
-		logInfo("Post adding", p, avail, ideal, s)
-	}
 	return res, nil
 }
 
+// logInfo can be used to dump the complete SIBRA state to the log file.
 func logInfo(m string, p sbalgo.AdmParams, avail, ideal sibra.Bps, s sbalgo.Algo) {
 	log.Info(m, "id", p.Extn.GetCurrID(), "\navail", avail, "ideal", ideal,
 		"req", p.Req.MaxBw.Bps(), "ifids", p.Ifids, "\nState", s)

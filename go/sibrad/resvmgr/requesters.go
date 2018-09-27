@@ -119,7 +119,6 @@ func (r *reqstr) Run(i reqstrI) {
 		return
 	}
 	select {
-	// FIXME(roosd): handle multiple replies
 	case event := <-notify:
 		succ, err := i.HandleRep(event)
 		if err != nil {
@@ -190,6 +189,36 @@ type reserver struct {
 	bwCls sibra.BwCls
 }
 
+func (r *reserver) validate(id sibra.ID, pld *sbreq.Pld) error {
+	if pld.Data == nil {
+		return common.NewBasicError("No data present", nil, "pld", pld)
+	}
+	var info *sbresv.Info
+	switch d := pld.Data.(type) {
+	case *sbreq.EphemReq:
+		info = d.Block.Info
+		if id == nil {
+			id = d.ID
+		}
+	case *sbreq.EphemFailed:
+		info = d.Info
+		if id == nil {
+			id = d.ID
+		}
+	default:
+		return common.NewBasicError("Invalid payload type", nil, "type", pld.Type)
+	}
+	if !id.Eq(r.id) {
+		return common.NewBasicError("Invalid ephemeral ID", nil,
+			"expected", r.id, "actual", id)
+	}
+	if info != r.pld.Data.(*sbreq.EphemReq).Block.Info {
+		return common.NewBasicError("Info has been modified", nil,
+			"expected", r.pld.Data.(*sbreq.EphemReq).Block.Info, "actual", info)
+	}
+	return nil
+}
+
 func (r *reserver) OnError(err error) {
 	r.Info("Reservation request failed", "id", r.id, "idx", 0, "err", err)
 }
@@ -214,7 +243,7 @@ func (s *EphemSetup) PrepareRequest() (common.Extension, *sbreq.Pld, error) {
 		ExpTick:  sibra.CurrentTick() + sibra.MaxEphemTicks,
 		BwCls:    s.bwCls,
 		PathType: sibra.PathTypeEphemeral,
-		RLC:      10, // FIXME(roosd): add RTT classes based on steady
+		RLC:      sibra.DurationToRLC(combineRLC(steady), true),
 	}
 	pld := &sbreq.Pld{
 		Type:      sbreq.REphmSetup,
@@ -238,10 +267,11 @@ func (s *EphemSetup) NotifyKeys() []*notifyKey {
 }
 
 func (s *EphemSetup) HandleRep(event notifyEvent) (bool, error) {
-	// TODO(roosd): sanity check -> correct ID, correct Idx, correct parameters ...
-	// correct response
 	if _, ok := event.extn.(*sbextn.Steady); !ok {
 		return false, common.NewBasicError("Extension is not steady", nil)
+	}
+	if err := s.validate(nil, event.pld); err != nil {
+		return false, err
 	}
 	steady := event.extn.(*sbextn.Steady)
 	s.entry.Lock()
@@ -259,7 +289,7 @@ func (s *EphemSetup) HandleRep(event notifyEvent) (bool, error) {
 		s.entry.ephemMeta.state = ephemExists
 	case *sbreq.EphemFailed:
 		s.entry.ephemMeta.lastFailCode = r.FailCode
-		s.entry.ephemMeta.lastMaxBW = r.MinOffer()
+		s.entry.ephemMeta.lastMaxBw = r.MinOffer()
 		s.entry.ephemMeta.timestamp = time.Now()
 		return false, nil
 	}
@@ -287,7 +317,7 @@ func (r *EphemRenew) PrepareRequest() (common.Extension, *sbreq.Pld, error) {
 		ExpTick:  sibra.CurrentTick() + sibra.MaxEphemTicks,
 		BwCls:    r.bwCls,
 		PathType: sibra.PathTypeEphemeral,
-		RLC:      10, // FIXME(roosd): add RTT classes based on steady
+		RLC:      ephem.ActiveBlocks[0].Info.RLC,
 		Index:    r.idx,
 	}
 	pld := &sbreq.Pld{
@@ -311,12 +341,13 @@ func (r *EphemRenew) NotifyKeys() []*notifyKey {
 }
 
 func (r *EphemRenew) HandleRep(event notifyEvent) (bool, error) {
-	// TODO(roosd): sanity check -> correct ID, correct Idx, correct parameters ...
-	// correct response
 	if _, ok := event.extn.(*sbextn.Ephemeral); !ok {
 		return false, common.NewBasicError("Extension is not ephemeral", nil)
 	}
 	ephem := event.extn.(*sbextn.Ephemeral)
+	if err := r.validate(ephem.IDs[0], event.pld); err != nil {
+		return false, err
+	}
 	r.entry.Lock()
 	defer r.entry.Unlock()
 	switch request := event.pld.Data.(type) {
@@ -329,9 +360,8 @@ func (r *EphemRenew) HandleRep(event notifyEvent) (bool, error) {
 		r.entry.ephemMeta.timestamp = time.Now()
 		r.entry.ephemMeta.state = ephemExists
 	case *sbreq.EphemFailed:
-		// FIXME(roosd): Determine error based on fail code
 		r.entry.ephemMeta.lastFailCode = request.FailCode
-		r.entry.ephemMeta.lastMaxBW = request.MinOffer()
+		r.entry.ephemMeta.lastMaxBw = request.MinOffer()
 		r.entry.ephemMeta.timestamp = time.Now()
 		return false, nil
 	}
@@ -349,6 +379,26 @@ func (c *cleaner) OnError(err error) {
 
 func (c *cleaner) OnTimeout() {
 	c.Info("Reservation cleanup timed out", "id", c.id, "idx", 0)
+}
+
+func (c *cleaner) validate(pld *sbreq.Pld) error {
+	if pld.Data == nil {
+		return common.NewBasicError("No data present", nil, "pld", pld)
+	}
+	switch d := pld.Data.(type) {
+	case *sbreq.EphemClean:
+		if d.Setup && !d.ID.Eq(c.id) {
+			return common.NewBasicError("Invalid ephemeral ID", nil,
+				"expected", c.id, "actual", d.ID)
+		}
+		if d.Info != c.pld.Data.(*sbreq.EphemClean).Info {
+			return common.NewBasicError("Info has been modified", nil,
+				"expected", c.pld.Data.(*sbreq.EphemClean).Info, "actual", d.Info)
+		}
+	default:
+		return common.NewBasicError("Invalid payload type", nil, "type", pld.Type)
+	}
+	return nil
 }
 
 func (c *cleaner) NotifyKeys() []*notifyKey {
@@ -386,10 +436,8 @@ func (c *EphemCleanSetup) PrepareRequest() (common.Extension, *sbreq.Pld, error)
 }
 
 func (c *EphemCleanSetup) HandleRep(event notifyEvent) (bool, error) {
-	// TODO(roosd): sanity check -> correct ID, correct Idx, correct parameters ...
-	// correct response
-	if _, ok := event.pld.Data.(*sbreq.EphemClean); !ok {
-		return false, common.NewBasicError("Invalid response type", nil, "type", event.pld.Type)
+	if err := c.validate(event.pld); err != nil {
+		return false, common.NewBasicError("Invalid response", nil, "type", event.pld.Type)
 	}
 	return event.pld.Accepted, nil
 }
@@ -423,10 +471,8 @@ func (c *EphemCleanRenew) PrepareRequest() (common.Extension, *sbreq.Pld, error)
 }
 
 func (c *EphemCleanRenew) HandleRep(event notifyEvent) (bool, error) {
-	// TODO(roosd): sanity check -> correct ID, correct Idx, correct parameters ...
-	// correct response
-	if _, ok := event.pld.Data.(*sbreq.EphemClean); !ok {
-		return false, common.NewBasicError("Invalid response type", nil, "type", event.pld.Type)
+	if err := c.validate(event.pld); err != nil {
+		return false, common.NewBasicError("Invalid response", nil, "type", event.pld.Type)
 	}
 	return event.pld.Accepted, nil
 }

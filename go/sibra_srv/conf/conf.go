@@ -155,7 +155,6 @@ func ReloadConf(oldConf *Conf) (*Conf, error) {
 	if oldConf == nil {
 		return nil, common.NewBasicError(ErrorConfNil, nil)
 	}
-	// FIXME(roosd): Support reloading of configuration.
 	return nil, common.NewBasicError("Reload not supported yet", nil)
 }
 

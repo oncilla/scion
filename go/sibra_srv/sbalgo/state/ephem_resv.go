@@ -33,7 +33,8 @@ type EphemResvEntry struct {
 	// LastIdx is the index before the currently active index.
 	// This is used during clean-up and re-requesting a failed index.
 	LastIdx EphemResvIdx
-	// TODO(roosd)
+	// SteadyEntry points to the steady reservation that this ephemeral
+	// reservation belongs to.
 	SteadyEntry *SteadyResvEntry
 }
 
@@ -95,7 +96,6 @@ func (e *EphemResvEntry) CleanUpIdx(failedInfo, lastInfo *sbresv.Info) (sbresv.I
 	}
 	cleaned := e.ActiveIdx.Info
 	e.ActiveIdx = e.LastIdx
-	// FIXME(roosd): This might be abused with two clean-ups.
 	e.LastIdx = EphemResvIdx{}
 	return cleaned, nil
 }
@@ -106,9 +106,9 @@ func validateFailedInfo(failedInfo, local *sbresv.Info) bool {
 }
 
 type EphemResvIdx struct {
-	// TODO(roosd): comments
+	// Info holds the reservation information
 	Info sbresv.Info
-	// TODO(roosd): comment
+	// Allocated indicates the amount of bandwidth that is allocated.
 	Allocated uint64
 }
 

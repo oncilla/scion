@@ -40,8 +40,9 @@ const (
 // setup loads and sets the newest configuration. If needed, the
 // snet/dispatcher are initialized.
 //
-// FIXME(roosd): Reloading is currently disabled, so this function is currently
-// only called once.
+// FIXME(roosd): Reloading is currently disabled. Thus, this function is currently
+// only called once. Move to env/conf when it is done to enable reloading.
+// Adapt conf/conf.go:ReloadConf to allow reloading.
 func setup() error {
 	oldConf := conf.Get()
 	newConf, err := loadConf(oldConf)

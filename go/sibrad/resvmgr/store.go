@@ -46,38 +46,41 @@ type steadyMeta struct {
 	timestamp time.Time
 }
 
+// ephemMeta is the metadata for ephemeral reservations.
 type ephemMeta struct {
 	remote addr.HostAddr
-	// TODO(roosd)
-	lastReq *sbreq.EphemReq
-	// TODO(roosd)
+	// timestamp indicates the last time ephemMeta was updated.
 	timestamp time.Time
-	// TODO(roosd)
+	// minBwCls is the minimum desired bandwidth class.
 	minBwCls sibra.BwCls
-	// TODO(roosd)
+	// maxBwCls is the maximum desired bandwidth class.
 	maxBwCls sibra.BwCls
-	// TODO(roosd)
+	// state indicates the state of the reservation resolver.
 	state state
-	// TODO(roosd)
+	// lastFailCode indicates the last fail code.
 	lastFailCode sbreq.FailCode
-	// TODO(roosd)
-	lastMaxBW sibra.BwCls
+	// lastMaxBw indicates the last maximum bandwidth that the on path ASes
+	// were willing to grant.
+	lastMaxBw sibra.BwCls
 }
 
+// resvEntry is the metadata for the resolver.
 type resvEntry struct {
 	sync.Mutex
-	// TODO(roosd)
+	// paths is a set of possible paths.
 	paths *pathmgr.SyncPaths
-	// TODO(roosd)
+	// pathKey indicates which path is preferred.
 	pathKey spathmeta.PathKey
-	// TODO(roosd)
+	// syncResv holds the SIBRA extension headers and is used to inject them
+	// into SNET.
 	syncResv *syncresv.Store
-	// TODO(roosd)
+	// fixedPath indicates if only the path specified by pathKey must be used.
 	fixedPath bool
-	// TODO(roosd)
+	// ephemMeta holds the meta data for ephemeral reservations.
 	ephemMeta *ephemMeta
 }
 
+// getPath returns the path with the specified pathKey.
 func (s *resvEntry) getPath() *spathmeta.AppPath {
 	path := s.paths.Load().APS.GetAppPath(s.pathKey)
 	if path == nil || path.Key() != s.pathKey {
@@ -86,6 +89,7 @@ func (s *resvEntry) getPath() *spathmeta.AppPath {
 	return path
 }
 
+// getNewPath gets a new path and sets the pathKey to the new one.
 func (s *resvEntry) getNewPath() *spathmeta.AppPath {
 	path := s.paths.Load().APS.GetAppPath(s.pathKey)
 	if path == nil || s.fixedPath && s.pathKey != path.Key() {
@@ -95,44 +99,31 @@ func (s *resvEntry) getNewPath() *spathmeta.AppPath {
 	return path
 }
 
+// store keeps track of all the reservation state.
 type store struct {
 	mutex sync.Mutex
-	// TODO(roosd)
-	segIdtoSteady map[string]map[string]struct{}
-	// TODO(roosd)
+	// segIdToSteady maps a segment ID to known steady IDs.
+	segIdToSteady map[string]map[string]struct{}
+	// steadyToMeta maps steady ID to steady meta data.
 	steadyToMeta map[string]*steadyMeta
-	// TODO(roosd)
+	// resvEntries keeps track of all reservation entries.
 	resvEntries map[ResvKey]*resvEntry
-	// TODO(roosd)
-	ephemToEntries map[string]*resvEntry
-	// TODO(roosd)
+	// id is a counter to provide unique ResvKeys.
 	id ResvKey
 }
 
 func newStore() *store {
 	return &store{
-		segIdtoSteady: make(map[string]map[string]struct{}),
+		segIdToSteady: make(map[string]map[string]struct{}),
 		steadyToMeta:  make(map[string]*steadyMeta),
 		resvEntries:   make(map[ResvKey]*resvEntry),
 	}
 }
 
-/*func (c *store) update(key ResvKey, ephem common.Extension) error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	entry, ok := c.resvEntries[key]
-	if !ok {
-		return common.NewBasicError("Unable to find StoreEntry", nil, "key", key)
-	}
-	entry.syncResv.UpdateEphem(ephem)
-	entry.timestamp = time.Now()
-	return nil
-}*/
-
 func (c *store) getSteadyId(segId common.RawBytes) []sibra.ID {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	entry := c.segIdtoSteady[string(segId)]
+	entry := c.segIdToSteady[string(segId)]
 	list := make([]sibra.ID, len(entry))
 	for k := range entry {
 		list = append(list, sibra.ID(common.RawBytes(k)))
@@ -143,16 +134,16 @@ func (c *store) getSteadyId(segId common.RawBytes) []sibra.ID {
 func (c *store) addSteadyId(segId common.RawBytes, steadyId sibra.ID) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	if entry := c.segIdtoSteady[string(segId)]; entry == nil {
-		c.segIdtoSteady[string(segId)] = make(map[string]struct{})
+	if entry := c.segIdToSteady[string(segId)]; entry == nil {
+		c.segIdToSteady[string(segId)] = make(map[string]struct{})
 	}
-	c.segIdtoSteady[string(segId)][string(common.RawBytes(steadyId))] = struct{}{}
+	c.segIdToSteady[string(segId)][string(common.RawBytes(steadyId))] = struct{}{}
 }
 
 func (c *store) removeSteadyId(segId common.RawBytes, steadyId sibra.ID) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	delete(c.segIdtoSteady[string(segId)], string(common.RawBytes(steadyId)))
+	delete(c.segIdToSteady[string(segId)], string(common.RawBytes(steadyId)))
 }
 
 func (c *store) getSteadyMeta(steadyID sibra.ID) *steadyMeta {
