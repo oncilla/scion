@@ -124,7 +124,7 @@ func AdmitSteadyResv(pkt *conf.ExtPkt, r *sbreq.SteadyReq) error {
 	}
 	if pkt.Pld.Accepted && !res.Accepted {
 		pkt.Pld.Accepted = false
-		r.Info.FailHop = pkt.Steady.SOFIndex
+		r.FailHop = pkt.Steady.SOFIndex
 		log.Info("Fail reservation", "id", pkt.Steady.GetCurrID())
 	}
 	if res.AllocBw < r.AccBw {

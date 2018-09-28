@@ -212,7 +212,7 @@ func (r *reserver) validate(id sibra.ID, pld *sbreq.Pld) error {
 		return common.NewBasicError("Invalid ephemeral ID", nil,
 			"expected", r.id, "actual", id)
 	}
-	if info != r.pld.Data.(*sbreq.EphemReq).Block.Info {
+	if !info.Eq(r.pld.Data.(*sbreq.EphemReq).Block.Info) {
 		return common.NewBasicError("Info has been modified", nil,
 			"expected", r.pld.Data.(*sbreq.EphemReq).Block.Info, "actual", info)
 	}
@@ -391,7 +391,7 @@ func (c *cleaner) validate(pld *sbreq.Pld) error {
 			return common.NewBasicError("Invalid ephemeral ID", nil,
 				"expected", c.id, "actual", d.ID)
 		}
-		if d.Info != c.pld.Data.(*sbreq.EphemClean).Info {
+		if !d.Info.Eq(c.pld.Data.(*sbreq.EphemClean).Info) {
 			return common.NewBasicError("Info has been modified", nil,
 				"expected", c.pld.Data.(*sbreq.EphemClean).Info, "actual", d.Info)
 		}

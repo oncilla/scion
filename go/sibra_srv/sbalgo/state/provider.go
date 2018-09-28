@@ -69,6 +69,8 @@ func (b *BWProvider) AllocExpiring(bw uint64, expTick sibra.Tick) (uint64, bool,
 	return bw, true, nil
 }
 
+// FIXME(roosd): This leaks bandwidth in case a reservation moves from a larger to a
+// smaller class.
 func (b *BWProvider) ExchangeExpiring(newBw, oldBw uint64, newTick, oldTick sibra.Tick) (
 	uint64, bool, error) {
 

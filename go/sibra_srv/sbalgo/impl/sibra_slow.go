@@ -32,7 +32,7 @@ var _ sbalgo.EphemAdm = (*AlgoSlow)(nil)
 
 // AlgoSlow implements the SIBRA algorithm.
 type AlgoSlow struct {
-	*algoBase
+	*base
 	//
 	SrcToIds map[addr.IA]map[string]struct{}
 }
@@ -43,8 +43,8 @@ func NewSibraSlow(topo *topology.Topo, matrix state.Matrix) (*AlgoSlow, error) {
 		return nil, err
 	}
 	a := &AlgoSlow{
-		algoBase: &algoBase{
-			ephemAdm: &ephemAdm{s},
+		base: &base{
+			ephem: &ephem{s},
 		},
 		SrcToIds: make(map[addr.IA]map[string]struct{}),
 	}

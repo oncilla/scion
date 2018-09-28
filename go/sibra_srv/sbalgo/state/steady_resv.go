@@ -176,7 +176,7 @@ func (e *SteadyResvEntry) PromoteToSOFCreated(info *sbresv.Info) error {
 			"max", sub.Info.BwCls, "actual", info.BwCls)
 	}
 	if sub.Info.ExpTick != info.ExpTick || sub.Info.RLC != info.RLC ||
-		sub.Info.PathType != info.PathType || info.FailHop != 0 {
+		sub.Info.PathType != info.PathType {
 		return common.NewBasicError("Invalid info", nil, "expected", sub.Info, "actual", info)
 	}
 	sub.SOFCreated = true

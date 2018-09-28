@@ -93,7 +93,7 @@ var _ sbalgo.EphemAdm = (*AlgoFast)(nil)
 // by the reservation request and uses the cached sums to avoid many table
 // look ups.
 type AlgoFast struct {
-	*algoBase
+	*base
 	// TransitDemand keeps track of the transit demand between interfaces.
 	TransitDemand map[sbalgo.IFTuple]float64
 	// TransitAlloc keeps track of the transit allocation between interfaces.
@@ -109,8 +109,8 @@ func NewSibraFast(topo *topology.Topo, matrix state.Matrix) (*AlgoFast, error) {
 		return nil, err
 	}
 	a := &AlgoFast{
-		algoBase: &algoBase{
-			ephemAdm: &ephemAdm{s},
+		base: &base{
+			ephem: &ephem{s},
 		},
 		TransitDemand: make(map[sbalgo.IFTuple]float64),
 		TransitAlloc:  make(map[sbalgo.IFTuple]float64),
@@ -619,5 +619,5 @@ func (s *AlgoFast) nextScaledSrcAlloc(egCap sibra.Bps, ifids sbalgo.IFTuple,
 
 func (s *AlgoFast) String() string {
 	return fmt.Sprintf("TransitDem %v\nSrcMap %v\nState %s", s.TransitDemand, s.SourceMap,
-		s.ephemAdm.SibraState)
+		s.ephem.SibraState)
 }

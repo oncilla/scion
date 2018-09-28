@@ -16,6 +16,7 @@ package impl
 
 import (
 	"github.com/scionproto/scion/go/lib/common"
+	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/sibra"
 	"github.com/scionproto/scion/go/lib/sibra/sbextn"
 	"github.com/scionproto/scion/go/lib/sibra/sbreq"
@@ -24,376 +25,324 @@ import (
 	"github.com/scionproto/scion/go/sibra_srv/sbalgo/state"
 )
 
-var _ sbalgo.EphemAdm = (*ephemAdm)(nil)
+var _ sbalgo.EphemAdm = (*ephem)(nil)
 
-// XXX(roosd): this code is really ugly
-type ephemAdm struct {
+type ephem struct {
 	*state.SibraState
 }
 
-func (e *ephemAdm) AdmitEphemSetup(steady *sbextn.Steady, p *sbreq.Pld) (sbalgo.EphemRes, error) {
+func (e *ephem) AdmitEphemSetup(steady *sbextn.Steady, p *sbreq.Pld) (sbalgo.EphemRes, error) {
 	if steady.IsTransfer() {
 		return e.setupTrans(steady, p)
 	}
 	return e.setup(steady, p)
 }
 
-func (e *ephemAdm) setup(steady *sbextn.Steady, p *sbreq.Pld) (sbalgo.EphemRes, error) {
-	if !p.Accepted {
-		// FIXME(roosd): avoid computations if failcode > bwexceeded
-		r := p.Data.(*sbreq.EphemFailed)
-		stEntry, ok := e.SteadyMap.Get(steady.IDs[steady.CurrSteady])
-		if !ok {
-			return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
-		}
-		// FIXME(roosd): check steady entry is not outdated
-		res := sbalgo.EphemRes{
-			MaxBw:    minBwCls(r.Info.BwCls, sibra.Bps(stEntry.EphemeralBW.Free()).ToBwCls(true)),
-			FailCode: sbreq.BwExceeded,
-		}
-		return res, nil
-	}
-	r := p.Data.(*sbreq.EphemReq)
-	if !e.validateEphemInfo(r.Block.Info, true) {
+func (e *ephem) setup(steady *sbextn.Steady, p *sbreq.Pld) (sbalgo.EphemRes, error) {
+	info := e.extractInfo(p, true)
+	if info == nil {
 		return sbalgo.EphemRes{FailCode: sbreq.InvalidInfo}, nil
 	}
-	stEntry, ok := e.SteadyMap.Get(steady.IDs[steady.CurrSteady])
-	if !ok {
-		return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
+	stEntry, fc := e.checkSteady(steady.GetCurrID(), steady.GetCurrBlock().Info, p)
+	if fc != sbreq.FailCodeNone {
+		return sbalgo.EphemRes{FailCode: fc}, nil
 	}
-	_, ok = stEntry.EphemResvMap.Get(r.ID)
+	if !p.Accepted {
+		return e.checkBw(stEntry, info), nil
+	}
+	id := p.Data.(*sbreq.EphemReq).ID
+	_, ok := stEntry.EphemResvMap.Get(id)
 	if ok {
 		return sbalgo.EphemRes{FailCode: sbreq.EphemExists}, nil
 	}
-	reqBwCls := r.Block.Info.BwCls
-	alloc, ok, err := stEntry.EphemeralBW.AllocExpiring(
-		uint64(reqBwCls.Bps()), r.Block.Info.ExpTick)
+	res, alloc, err := e.allocExpiring(stEntry, info)
+	if err != nil || res.FailCode != sbreq.FailCodeNone {
+		return res, err
+	}
+	if err := e.addEntry(stEntry, id, info, alloc); err != nil {
+		stEntry.EphemeralBW.DeallocExpiring(uint64(alloc), info.ExpTick)
+		return sbalgo.EphemRes{FailCode: sbreq.EphemExists}, nil
+	}
+	return res, nil
+}
+
+func (e *ephem) setupTrans(steady *sbextn.Steady, p *sbreq.Pld) (sbalgo.EphemRes, error) {
+	info := e.extractInfo(p, true)
+	if info == nil {
+		return sbalgo.EphemRes{FailCode: sbreq.InvalidInfo}, nil
+	}
+	stIngress, fc := e.checkSteady(steady.GetCurrID(), steady.GetCurrBlock().Info, p)
+	if fc != sbreq.FailCodeNone {
+		return sbalgo.EphemRes{FailCode: fc}, nil
+	}
+	stEgress, fc := e.checkSteady(steady.IDs[steady.CurrSteady+1],
+		steady.ActiveBlocks[steady.CurrSteady+1].Info, p)
+	if fc != sbreq.FailCodeNone {
+		return sbalgo.EphemRes{FailCode: fc}, nil
+	}
+	if !p.Accepted {
+		in := e.checkBw(stIngress, info)
+		if eg := e.checkBw(stEgress, info); eg.MaxBw < in.MaxBw {
+			return eg, nil
+		}
+		return in, nil
+	}
+	id := p.Data.(*sbreq.EphemReq).ID
+	_, ok := stIngress.EphemResvMap.Get(id)
+	if ok {
+		return sbalgo.EphemRes{FailCode: sbreq.EphemExists}, nil
+	}
+	_, ok = stEgress.EphemResvMap.Get(id)
+	if ok {
+		return sbalgo.EphemRes{FailCode: sbreq.EphemExists}, nil
+	}
+	res, allocIngress, err := e.allocExpiring(stIngress, info)
+	if err != nil || res.FailCode != sbreq.FailCodeNone {
+		return res, err
+	}
+	res, allocEgress, err := e.allocExpiring(stEgress, info)
+	if err != nil || res.FailCode != sbreq.FailCodeNone {
+		stIngress.EphemeralBW.DeallocExpiring(uint64(allocIngress), info.ExpTick)
+		return res, err
+	}
+	if err := e.addEntry(stIngress, id, info, allocIngress); err != nil {
+		stIngress.EphemeralBW.DeallocExpiring(uint64(allocIngress), info.ExpTick)
+		stEgress.EphemeralBW.DeallocExpiring(uint64(allocEgress), info.ExpTick)
+		return sbalgo.EphemRes{FailCode: sbreq.EphemExists}, nil
+	}
+	if err := e.addEntry(stEgress, id, info, allocEgress); err != nil {
+		stIngress.EphemResvMap.Delete(id)
+		stIngress.EphemeralBW.DeallocExpiring(uint64(allocIngress), info.ExpTick)
+		stEgress.EphemeralBW.DeallocExpiring(uint64(allocEgress), info.ExpTick)
+		return sbalgo.EphemRes{FailCode: sbreq.EphemExists}, nil
+	}
+	return res, nil
+}
+
+func (e *ephem) checkSteady(id sibra.ID, info *sbresv.Info, p *sbreq.Pld) (
+	*state.SteadyResvEntry, sbreq.FailCode) {
+
+	stEntry, ok := e.SteadyMap.Get(id)
+	if !ok {
+		return nil, sbreq.SteadyNotExists
+	}
+	if info == nil {
+		// Avoid locking unnecessarily
+		return stEntry, sbreq.FailCodeNone
+	}
+	stEntry.RLock()
+	defer stEntry.RUnlock()
+	if !stEntry.Indexes[stEntry.ActiveIndex].Info.Eq(info) {
+		return nil, sbreq.SteadyOutdated
+	}
+	return stEntry, sbreq.FailCodeNone
+}
+
+func (e *ephem) checkBw(stEntry *state.SteadyResvEntry, info *sbresv.Info) sbalgo.EphemRes {
+	// No need to lock steady, since EphemeralBW has own lock.
+	return sbalgo.EphemRes{
+		MaxBw:    minBwCls(info.BwCls, sibra.Bps(stEntry.EphemeralBW.Free()).ToBwCls(true)),
+		FailCode: sbreq.BwExceeded,
+	}
+}
+
+func (e *ephem) allocExpiring(steady *state.SteadyResvEntry, info *sbresv.Info) (
+	sbalgo.EphemRes, sibra.Bps, error) {
+	alloc, ok, err := steady.EphemeralBW.AllocExpiring(uint64(info.BwCls.Bps()), info.ExpTick)
 	if err != nil {
 		// This should not be possible, since the info has been validated above.
-		return sbalgo.EphemRes{}, common.NewBasicError("Unable to alloc expiring", err)
+		return sbalgo.EphemRes{}, 0, common.NewBasicError("Unable to alloc expiring", err)
 	}
+	maxBw := sibra.Bps(alloc).ToBwCls(true)
 	if !ok {
 		res := sbalgo.EphemRes{
-			MaxBw:    sibra.Bps(alloc).ToBwCls(true),
+			AllocBw:  0,
+			MaxBw:    maxBw,
 			FailCode: sbreq.BwExceeded,
 		}
-		return res, nil
+		return res, 0, nil
 	}
+	res := sbalgo.EphemRes{
+		AllocBw: maxBw,
+		MaxBw:   maxBw,
+	}
+	return res, sibra.Bps(alloc), nil
+}
+
+func (e *ephem) addEntry(steady *state.SteadyResvEntry, id sibra.ID,
+	info *sbresv.Info, alloc sibra.Bps) error {
 	entry := &state.EphemResvEntry{
-		SteadyEntry: stEntry,
-		Id:          r.ID.Copy(),
+		SteadyEntry: steady,
+		Id:          id.Copy(),
 		ActiveIdx: state.EphemResvIdx{
-			Info:      *r.Block.Info,
-			Allocated: alloc,
+			Info:      *info,
+			Allocated: uint64(alloc),
 		},
 	}
-	if err := stEntry.EphemResvMap.Add(r.ID, entry); err != nil {
-		stEntry.EphemeralBW.DeallocExpiring(alloc, r.Block.Info.ExpTick)
-		return sbalgo.EphemRes{FailCode: sbreq.EphemExists}, nil
-	}
-	res := sbalgo.EphemRes{
-		AllocBw:  reqBwCls,
-		MaxBw:    reqBwCls,
-		FailCode: sbreq.FailCodeNone,
-	}
-	return res, nil
+	return steady.EphemResvMap.Add(id, entry)
 }
 
-func (e *ephemAdm) setupTrans(steady *sbextn.Steady, p *sbreq.Pld) (sbalgo.EphemRes, error) {
-	// FIXME(roosd): clean up is not handled correctly
-	if !p.Accepted {
-		r := p.Data.(*sbreq.EphemFailed)
-		stEntry, ok := e.SteadyMap.Get(steady.IDs[steady.CurrSteady])
-		if !ok {
-			return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
-		}
-		res := sbalgo.EphemRes{
-			MaxBw: minBwCls(r.Info.BwCls,
-				sibra.Bps(stEntry.EphemeralBW.Free()).ToBwCls(true)),
-			FailCode: sbreq.BwExceeded,
-		}
-		stEntry, ok = e.SteadyMap.Get(steady.IDs[steady.CurrSteady+1])
-		if !ok {
-			return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
-		}
-		res.MaxBw = minBwCls(res.MaxBw,
-			sibra.Bps(stEntry.EphemeralBW.Free()).ToBwCls(true))
-		return res, nil
-	}
-	r := p.Data.(*sbreq.EphemReq)
-	if !e.validateEphemInfo(r.Block.Info, true) {
-		return sbalgo.EphemRes{FailCode: sbreq.InvalidInfo}, nil
-	}
-	stEntryBefore, ok := e.SteadyMap.Get(steady.IDs[steady.CurrSteady])
-	if !ok {
-		return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
-	}
-	stEntryAfter, ok := e.SteadyMap.Get(steady.IDs[steady.CurrSteady+1])
-	if !ok {
-		return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
-	}
-	_, ok = stEntryBefore.EphemResvMap.Get(r.ID)
-	if ok {
-		return sbalgo.EphemRes{FailCode: sbreq.EphemExists}, nil
-	}
-	_, ok = stEntryAfter.EphemResvMap.Get(r.ID)
-	if ok {
-		return sbalgo.EphemRes{FailCode: sbreq.EphemExists}, nil
-	}
-	reqBwCls := r.Block.Info.BwCls
-	allocBefore, ok, err := stEntryBefore.EphemeralBW.AllocExpiring(
-		uint64(reqBwCls.Bps()), r.Block.Info.ExpTick)
-	if err != nil {
-		// This should not be possible, since the info has been validated above.
-		return sbalgo.EphemRes{}, common.NewBasicError("Unable to alloc expiring on before", err)
-	}
-	res := sbalgo.EphemRes{
-		MaxBw: reqBwCls,
-	}
-	if !ok {
-		res.MaxBw = sibra.Bps(allocBefore).ToBwCls(true)
-		res.FailCode = sbreq.BwExceeded
-	}
-	allocAfter, ok, err := stEntryAfter.EphemeralBW.AllocExpiring(
-		uint64(reqBwCls.Bps()), r.Block.Info.ExpTick)
-	if err != nil {
-		// This should not be possible, since the info has been validated above.
-		return sbalgo.EphemRes{}, common.NewBasicError("Unable to alloc expiring on after", err)
-	}
-	if !ok || res.FailCode == sbreq.BwExceeded {
-		res.MaxBw = minBwCls(res.MaxBw, sibra.Bps(allocAfter).ToBwCls(true))
-		res.FailCode = sbreq.BwExceeded
-		if res.FailCode == sbreq.FailCodeNone {
-			stEntryBefore.EphemeralBW.DeallocExpiring(allocBefore, r.Block.Info.ExpTick)
-		}
-		if ok {
-			stEntryAfter.EphemeralBW.DeallocExpiring(allocBefore, r.Block.Info.ExpTick)
-		}
-		return res, nil
-	}
-	entryBefore := &state.EphemResvEntry{
-		SteadyEntry: stEntryBefore,
-		Id:          r.ID.Copy(),
-		ActiveIdx: state.EphemResvIdx{
-			Info:      *r.Block.Info,
-			Allocated: allocBefore,
-		},
-	}
-	if err := stEntryBefore.EphemResvMap.Add(r.ID, entryBefore); err != nil {
-		stEntryBefore.EphemeralBW.DeallocExpiring(allocBefore, r.Block.Info.ExpTick)
-		stEntryAfter.EphemeralBW.DeallocExpiring(allocBefore, r.Block.Info.ExpTick)
-		return sbalgo.EphemRes{FailCode: sbreq.EphemExists}, nil
-	}
-	entryAfter := &state.EphemResvEntry{
-		SteadyEntry: stEntryAfter,
-		Id:          r.ID.Copy(),
-		ActiveIdx: state.EphemResvIdx{
-			Info:      *r.Block.Info,
-			Allocated: allocAfter,
-		},
-	}
-	if err := stEntryAfter.EphemResvMap.Add(r.ID, entryAfter); err != nil {
-		stEntryBefore.EphemResvMap.Delete(r.ID)
-		stEntryBefore.EphemeralBW.DeallocExpiring(allocBefore, r.Block.Info.ExpTick)
-		stEntryAfter.EphemeralBW.DeallocExpiring(allocAfter, r.Block.Info.ExpTick)
-		return sbalgo.EphemRes{FailCode: sbreq.EphemExists}, nil
-	}
-	res = sbalgo.EphemRes{
-		AllocBw:  reqBwCls,
-		MaxBw:    reqBwCls,
-		FailCode: sbreq.FailCodeNone,
-	}
-	return res, nil
-}
-
-func (e *ephemAdm) AdmitEphemRenew(ephem *sbextn.Ephemeral, p *sbreq.Pld) (sbalgo.EphemRes, error) {
+func (e *ephem) AdmitEphemRenew(ephem *sbextn.Ephemeral, p *sbreq.Pld) (sbalgo.EphemRes, error) {
 	if ephem.IsSteadyTransfer() {
 		return e.renewTrans(ephem, p)
 	}
 	return e.renew(ephem, p)
 }
 
-func (e *ephemAdm) renew(ephem *sbextn.Ephemeral, p *sbreq.Pld) (sbalgo.EphemRes, error) {
-	if !p.Accepted {
-		// FIXME(roosd): avoid computations if failcode > bwexceeded
-		r := p.Data.(*sbreq.EphemFailed)
-		stEntry, ok := e.SteadyMap.Get(ephem.SteadyIds()[ephem.CurrSteady])
-		if !ok {
-			return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
-		}
-		// FIXME(roosd): consider already reserved BW
-		res := sbalgo.EphemRes{
-			MaxBw: minBwCls(r.Info.BwCls,
-				sibra.Bps(stEntry.EphemeralBW.Free()).ToBwCls(true)),
-			FailCode: sbreq.BwExceeded,
-		}
-		return res, nil
-	}
-	r := p.Data.(*sbreq.EphemReq)
-	if !e.validateEphemInfo(r.Block.Info, false) {
+func (e *ephem) renew(ephem *sbextn.Ephemeral, p *sbreq.Pld) (sbalgo.EphemRes, error) {
+	info := e.extractInfo(p, false)
+	if info == nil {
 		return sbalgo.EphemRes{FailCode: sbreq.InvalidInfo}, nil
 	}
-	stEntry, ok := e.SteadyMap.Get(ephem.SteadyIds()[ephem.CurrSteady])
-	if !ok {
-		return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
+	stEntry, fc := e.checkSteady(ephem.SteadyIds()[ephem.CurrSteady], nil, p)
+	if fc != sbreq.FailCodeNone {
+		return sbalgo.EphemRes{FailCode: fc}, nil
 	}
-	ephemEntry, ok := stEntry.EphemResvMap.Get(ephem.IDs[0])
+	if !p.Accepted {
+		return e.checkBw(stEntry, info), nil
+	}
+	id := ephem.GetCurrID()
+	ephemEntry, ok := stEntry.EphemResvMap.Get(id)
 	if !ok {
 		return sbalgo.EphemRes{FailCode: sbreq.EphemNotExists}, nil
 	}
-	reqBwCls := r.Block.Info.BwCls
-	oldBW := ephemEntry.ActiveIdx.Allocated
-	oldTick := ephemEntry.ActiveIdx.Info.ExpTick
-	alloc, ok, err := stEntry.EphemeralBW.ExchangeExpiring(uint64(reqBwCls.Bps()), oldBW,
-		r.Block.Info.ExpTick, oldTick)
+	res, alloc, undo, err := e.exchangeExpiring(stEntry, ephemEntry, info)
+	if err != nil || res.FailCode != sbreq.FailCodeNone {
+		return res, err
+	}
+	if err := ephemEntry.AddIdx(info, uint64(alloc)); err != nil {
+		stEntry.EphemeralBW.UndoExchangeExpiring(undo.newBw, undo.oldBw, undo.newTick, undo.oldTick)
+		log.Info("Unable to add index", "info", info, "active", ephemEntry.ActiveIdx, "err", err)
+		return sbalgo.EphemRes{FailCode: sbreq.InvalidInfo}, nil
+	}
+	return res, nil
+}
+
+func (e *ephem) renewTrans(ephem *sbextn.Ephemeral, p *sbreq.Pld) (sbalgo.EphemRes, error) {
+	info := e.extractInfo(p, false)
+	if info == nil {
+		log.Debug("invalid info validate")
+		return sbalgo.EphemRes{FailCode: sbreq.InvalidInfo}, nil
+	}
+	stIngress, fc := e.checkSteady(ephem.SteadyIds()[ephem.CurrSteady], nil, p)
+	if fc != sbreq.FailCodeNone {
+		return sbalgo.EphemRes{FailCode: fc}, nil
+	}
+	stEgress, fc := e.checkSteady(ephem.SteadyIds()[ephem.CurrSteady+1], nil, p)
+	if fc != sbreq.FailCodeNone {
+		return sbalgo.EphemRes{FailCode: fc}, nil
+	}
+	if !p.Accepted {
+		in := e.checkBw(stIngress, info)
+		if eg := e.checkBw(stEgress, info); eg.MaxBw < in.MaxBw {
+			return eg, nil
+		}
+		return in, nil
+	}
+	id := ephem.GetCurrID()
+	epIngress, ok := stIngress.EphemResvMap.Get(id)
+	if !ok {
+		return sbalgo.EphemRes{FailCode: sbreq.EphemNotExists}, nil
+	}
+	epEgress, ok := stEgress.EphemResvMap.Get(id)
+	if !ok {
+		return sbalgo.EphemRes{FailCode: sbreq.EphemNotExists}, nil
+	}
+	res, allocIngress, undoIngress, err := e.exchangeExpiring(stIngress, epIngress, info)
+	if err != nil || res.FailCode != sbreq.FailCodeNone {
+		return res, err
+	}
+	res, allocEgress, undoEgress, err := e.exchangeExpiring(stEgress, epEgress, info)
+	if err != nil || res.FailCode != sbreq.FailCodeNone {
+		stIngress.EphemeralBW.UndoExchangeExpiring(undoIngress.newBw,
+			undoIngress.oldBw, undoIngress.newTick, undoIngress.oldTick)
+		return res, err
+	}
+	if err := epIngress.AddIdx(info, uint64(allocIngress)); err != nil {
+		stIngress.EphemeralBW.UndoExchangeExpiring(undoIngress.newBw,
+			undoIngress.oldBw, undoIngress.newTick, undoIngress.oldTick)
+		stEgress.EphemeralBW.UndoExchangeExpiring(undoEgress.newBw,
+			undoEgress.oldBw, undoEgress.newTick, undoEgress.oldTick)
+		log.Debug("invalid info ingress", "err", err)
+		return sbalgo.EphemRes{FailCode: sbreq.InvalidInfo}, nil
+	}
+	if err := epEgress.AddIdx(info, uint64(allocEgress)); err != nil {
+		stIngress.EphemeralBW.UndoExchangeExpiring(undoIngress.newBw,
+			undoIngress.oldBw, undoIngress.newTick, undoIngress.oldTick)
+		stEgress.EphemeralBW.UndoExchangeExpiring(undoEgress.newBw,
+			undoEgress.oldBw, undoEgress.newTick, undoEgress.oldTick)
+		epIngress.CleanUpIdx(info, &epIngress.LastIdx.Info)
+		log.Debug("invalid info egress", "err", err)
+		return sbalgo.EphemRes{FailCode: sbreq.InvalidInfo}, nil
+	}
+	return res, nil
+}
+
+type undo struct {
+	newTick sibra.Tick
+	oldTick sibra.Tick
+	newBw   uint64
+	oldBw   uint64
+}
+
+func (e *ephem) exchangeExpiring(stEntry *state.SteadyResvEntry,
+	ephemEntry *state.EphemResvEntry, info *sbresv.Info) (sbalgo.EphemRes, sibra.Bps, undo, error) {
+
+	u := undo{
+		newTick: info.ExpTick,
+		oldTick: ephemEntry.ActiveIdx.Info.ExpTick,
+		newBw:   uint64(info.BwCls.Bps()),
+		oldBw:   ephemEntry.ActiveIdx.Allocated,
+	}
+	alloc, ok, err := stEntry.EphemeralBW.ExchangeExpiring(u.newBw, u.oldBw, u.newTick, u.oldTick)
 	if err != nil {
-		// This should not be possible, since the info has been validated above.
-		return sbalgo.EphemRes{}, common.NewBasicError("Unable to exchange expiring", err)
+		// This should not be possible, since the info has been validated.
+		return sbalgo.EphemRes{}, 0, undo{}, err
 	}
 	if !ok {
 		res := sbalgo.EphemRes{
 			MaxBw:    sibra.Bps(alloc).ToBwCls(true),
 			FailCode: sbreq.BwExceeded,
 		}
-		return res, nil
+		return res, 0, undo{}, nil
 	}
-	if err := ephemEntry.AddIdx(r.Block.Info, alloc); err != nil {
-		stEntry.EphemeralBW.UndoExchangeExpiring(uint64(reqBwCls.Bps()), oldBW,
-			r.Block.Info.ExpTick, oldTick)
-		res := sbalgo.EphemRes{
-			FailCode: sbreq.InvalidInfo,
-		}
-		return res, nil
-	}
+	maxBw := sibra.Bps(alloc).ToBwCls(true)
 	res := sbalgo.EphemRes{
-		AllocBw:  reqBwCls,
-		MaxBw:    reqBwCls,
-		FailCode: sbreq.FailCodeNone,
+		AllocBw: maxBw,
+		MaxBw:   maxBw,
 	}
-	return res, nil
+	return res, sibra.Bps(alloc), u, err
 }
 
-func (e *ephemAdm) renewTrans(ephem *sbextn.Ephemeral, p *sbreq.Pld) (sbalgo.EphemRes, error) {
-	if !p.Accepted {
-		r := p.Data.(*sbreq.EphemFailed)
-		stEntry, ok := e.SteadyMap.Get(ephem.SteadyIds()[ephem.CurrSteady])
-		if !ok {
-			return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
-		}
-		// FIXME(roosd): consider already reserved BW
-		res := sbalgo.EphemRes{
-			MaxBw: minBwCls(r.Info.BwCls,
-				sibra.Bps(stEntry.EphemeralBW.Free()).ToBwCls(true)),
-			FailCode: sbreq.BwExceeded,
-		}
-		stEntry, ok = e.SteadyMap.Get(ephem.SteadyIds()[ephem.CurrSteady+1])
-		if !ok {
-			return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
-		}
-		res.MaxBw = minBwCls(res.MaxBw,
-			sibra.Bps(stEntry.EphemeralBW.Free()).ToBwCls(true))
-		return res, nil
+func (e *ephem) extractInfo(pld *sbreq.Pld, setup bool) *sbresv.Info {
+	var info *sbresv.Info
+	switch r := pld.Data.(type) {
+	case *sbreq.EphemFailed:
+		info = r.Info
+	case *sbreq.EphemReq:
+		info = r.Block.Info
 	}
-	r := p.Data.(*sbreq.EphemReq)
-	if !e.validateEphemInfo(r.Block.Info, false) {
-		return sbalgo.EphemRes{FailCode: sbreq.InvalidInfo}, nil
+	if !e.validateInfo(info, setup) {
+		return nil
 	}
-	stEntryBefore, ok := e.SteadyMap.Get(ephem.SteadyIds()[ephem.CurrSteady])
-	if !ok {
-		return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
-	}
-	stEntryAfter, ok := e.SteadyMap.Get(ephem.SteadyIds()[ephem.CurrSteady+1])
-	if !ok {
-		return sbalgo.EphemRes{FailCode: sbreq.SteadyNotExists}, nil
-	}
-	ephemEntryBefore, ok := stEntryBefore.EphemResvMap.Get(ephem.IDs[0])
-	if !ok {
-		return sbalgo.EphemRes{FailCode: sbreq.EphemNotExists}, nil
-	}
-	ephemEntryAfter, ok := stEntryAfter.EphemResvMap.Get(ephem.IDs[0])
-	if !ok {
-		return sbalgo.EphemRes{FailCode: sbreq.EphemNotExists}, nil
-	}
-	reqBwCls := r.Block.Info.BwCls
-	oldBWBefore := ephemEntryBefore.ActiveIdx.Allocated
-	oldTickBefore := ephemEntryBefore.ActiveIdx.Info.ExpTick
-	allocBefore, ok, err := stEntryBefore.EphemeralBW.ExchangeExpiring(uint64(reqBwCls.Bps()),
-		oldBWBefore, r.Block.Info.ExpTick, oldTickBefore)
-	if err != nil {
-		// This should not be possible, since the info has been validated above.
-		return sbalgo.EphemRes{}, common.NewBasicError("Unable to alloc expiring on before", err)
-	}
-	res := sbalgo.EphemRes{
-		MaxBw: reqBwCls,
-	}
-	if !ok {
-		res.MaxBw = sibra.Bps(allocBefore).ToBwCls(true)
-		res.FailCode = sbreq.BwExceeded
-	}
-	oldBWAfter := ephemEntryAfter.ActiveIdx.Allocated
-	oldTickAfer := ephemEntryAfter.ActiveIdx.Info.ExpTick
-	allocAfter, ok, err := stEntryAfter.EphemeralBW.ExchangeExpiring(uint64(reqBwCls.Bps()),
-		oldBWAfter, r.Block.Info.ExpTick, oldTickAfer)
-	if err != nil {
-		// This should not be possible, since the info has been validated above.
-		return sbalgo.EphemRes{}, common.NewBasicError("Unable to alloc expiring on after", err)
-	}
-	if !ok || res.FailCode == sbreq.BwExceeded {
-		res.MaxBw = minBwCls(res.MaxBw, sibra.Bps(allocAfter).ToBwCls(true))
-		res.FailCode = sbreq.BwExceeded
-		if res.FailCode == sbreq.FailCodeNone {
-			stEntryBefore.EphemeralBW.UndoExchangeExpiring(uint64(reqBwCls.Bps()),
-				oldBWBefore, r.Block.Info.ExpTick, oldTickBefore)
-		}
-		if ok {
-			stEntryAfter.EphemeralBW.UndoExchangeExpiring(uint64(reqBwCls.Bps()),
-				oldBWAfter, r.Block.Info.ExpTick, oldTickAfer)
-		}
-		return res, nil
-	}
-	if err := ephemEntryBefore.AddIdx(r.Block.Info, allocBefore); err != nil {
-		stEntryBefore.EphemeralBW.UndoExchangeExpiring(uint64(reqBwCls.Bps()),
-			oldBWBefore, r.Block.Info.ExpTick, oldTickBefore)
-		stEntryAfter.EphemeralBW.UndoExchangeExpiring(uint64(reqBwCls.Bps()),
-			oldBWAfter, r.Block.Info.ExpTick, oldTickAfer)
-		res := sbalgo.EphemRes{
-			FailCode: sbreq.InvalidInfo,
-		}
-		return res, nil
-	}
-	if err := ephemEntryAfter.AddIdx(r.Block.Info, allocAfter); err != nil {
-		stEntryBefore.EphemeralBW.UndoExchangeExpiring(uint64(reqBwCls.Bps()),
-			oldBWBefore, r.Block.Info.ExpTick, oldTickBefore)
-		stEntryAfter.EphemeralBW.UndoExchangeExpiring(uint64(reqBwCls.Bps()),
-			oldBWAfter, r.Block.Info.ExpTick, oldTickAfer)
-		ephemEntryBefore.CleanUpIdx(r.Block.Info, &ephemEntryBefore.LastIdx.Info)
-		res := sbalgo.EphemRes{
-			FailCode: sbreq.InvalidInfo,
-		}
-		return res, nil
-	}
-	res = sbalgo.EphemRes{
-		AllocBw:  reqBwCls,
-		MaxBw:    reqBwCls,
-		FailCode: sbreq.FailCodeNone,
-	}
-	return res, nil
+	return info
 }
 
-func (e *ephemAdm) validateEphemInfo(info *sbresv.Info, setup bool) bool {
-	return info.PathType == sibra.PathTypeEphemeral && info.BwCls != 0 &&
-		info.ExpTick.Sub(sibra.CurrentTick()) <= sibra.MaxEphemTicks &&
-		(!setup || info.Index == 0)
+func (e *ephem) validateInfo(info *sbresv.Info, setup bool) bool {
+	currTick := sibra.CurrentTick()
+	return !(info.PathType != sibra.PathTypeEphemeral || info.BwCls == 0 ||
+		info.ExpTick.Sub(currTick) > sibra.MaxEphemTicks || info.ExpTick <= currTick ||
+		(setup && info.Index != 0))
 }
 
-func (e *ephemAdm) CleanEphemSetup(steady *sbextn.Steady, p *sbreq.Pld) error {
+func (e *ephem) CleanEphemSetup(steady *sbextn.Steady, p *sbreq.Pld) (sbreq.FailCode, error) {
 	if steady.IsTransfer() {
 		return e.setupCleanUpTrans(steady, p)
 	}
 	return e.setupCleanUp(steady, p)
 }
 
-func (e *ephemAdm) setupCleanUp(steady *sbextn.Steady, p *sbreq.Pld) error {
+func (e *ephem) setupCleanUp(steady *sbextn.Steady, p *sbreq.Pld) (sbreq.FailCode, error) {
 	var info *sbresv.Info
 	var id sibra.ID
 	switch r := p.Data.(type) {
@@ -404,59 +353,114 @@ func (e *ephemAdm) setupCleanUp(steady *sbextn.Steady, p *sbreq.Pld) error {
 		info = r.Info
 		id = r.ID
 	}
-	return e.setupCleanEntry(id, steady.IDs[steady.CurrSteady], info, &sbresv.Info{})
+	if !e.validateInfo(info, true) {
+		return sbreq.InvalidInfo, nil
+	}
+	return e.cleanEntry(id, steady.IDs[steady.CurrSteady], info, &sbresv.Info{})
 }
 
-func (e *ephemAdm) setupCleanUpTrans(steady *sbextn.Steady, p *sbreq.Pld) error {
+func (e *ephem) setupCleanUpTrans(steady *sbextn.Steady, p *sbreq.Pld) (sbreq.FailCode, error) {
 	var info *sbresv.Info
 	var id sibra.ID
-	offA, offB := 1, 0
+	offIngress, offEgress := 1, 0
 	switch r := p.Data.(type) {
 	case *sbreq.EphemFailed:
 		info = r.Info
 		id = r.ID
 		// The response is traveling in the reverse direction.
-		offA, offB = 0, -1
+		offIngress, offEgress = 0, -1
 	case *sbreq.EphemClean:
 		info = r.Info
 		id = r.ID
 	}
+	if !e.validateInfo(info, true) {
+		return sbreq.InvalidInfo, nil
+	}
 	// Clean the index for the reservation after the transfer in reservation direction.
-	errA := e.setupCleanEntry(id, steady.IDs[steady.CurrSteady+offA],
+	fcIngress, err := e.cleanEntry(id, steady.IDs[steady.CurrSteady+offIngress],
 		info, &sbresv.Info{})
 	// Clean the index for the reservation before the transfer in reservation direction.
-	errB := e.setupCleanEntry(id, steady.IDs[steady.CurrSteady+offB],
+	fcEgress, errEgress := e.cleanEntry(id, steady.IDs[steady.CurrSteady+offEgress],
 		info, &sbresv.Info{})
-	switch {
-	case errA != nil && errB != nil:
-		return common.NewBasicError("Unable to clean both reservations", errA, "errB", errB)
-	case errA != nil:
-		return common.NewBasicError("Unable to clean reservation after transfer", errA)
-	case errB != nil:
-		return common.NewBasicError("Unable to clean reservation before transfer", errA)
+	if err != nil || errEgress != nil {
+		err = common.NewBasicError("Unable to clean entry", err, "egress", errEgress)
 	}
-	return nil
+	if fcIngress < fcEgress {
+		return fcEgress, err
+	}
+	return fcIngress, err
 }
 
-func (e *ephemAdm) setupCleanEntry(ephemId, steadyId sibra.ID, failed, last *sbresv.Info) error {
+func (e *ephem) CleanEphemRenew(ephem *sbextn.Ephemeral, p *sbreq.Pld) (sbreq.FailCode, error) {
+	if ephem.IsTransfer() {
+		return e.renewCleanUpTrans(ephem, p)
+	}
+	return e.renewCleanUp(ephem, p)
+}
+
+func (e *ephem) renewCleanUp(ephem *sbextn.Ephemeral, p *sbreq.Pld) (sbreq.FailCode, error) {
+	var info *sbresv.Info
+	switch r := p.Data.(type) {
+	case *sbreq.EphemFailed:
+		info = r.Info
+	case *sbreq.EphemClean:
+		info = r.Info
+	}
+	if !e.validateInfo(info, true) {
+		return sbreq.InvalidInfo, nil
+	}
+	return e.cleanEntry(ephem.GetCurrID(), ephem.SteadyIds()[ephem.CurrSteady], info,
+		ephem.GetCurrBlock().Info)
+}
+
+func (e *ephem) renewCleanUpTrans(ephem *sbextn.Ephemeral, p *sbreq.Pld) (sbreq.FailCode, error) {
+	var info *sbresv.Info
+	offIngress, offEgress := 1, 0
+	switch r := p.Data.(type) {
+	case *sbreq.EphemFailed:
+		info = r.Info
+		// The response is traveling in the reverse direction.
+		offIngress, offEgress = 0, -1
+	case *sbreq.EphemClean:
+		info = r.Info
+	}
+	if !e.validateInfo(info, true) {
+		return sbreq.InvalidInfo, nil
+	}
+	// Clean the index for the reservation after the transfer in reservation direction.
+	fcIngress, err := e.cleanEntry(ephem.GetCurrID(),
+		ephem.SteadyIds()[ephem.CurrSteady+offIngress], info, ephem.GetCurrBlock().Info)
+	// Clean the index for the reservation before the transfer in reservation direction.
+	fcEgress, errEgress := e.cleanEntry(ephem.GetCurrID(),
+		ephem.SteadyIds()[ephem.CurrSteady+offEgress], info, ephem.GetCurrBlock().Info)
+	if err != nil || errEgress != nil {
+		err = common.NewBasicError("Unable to clean entry", err, "egress", errEgress)
+	}
+	if fcIngress < fcEgress {
+		return fcEgress, err
+	}
+	return fcIngress, err
+}
+
+func (e *ephem) cleanEntry(ephemId, steadyId sibra.ID, failed,
+	last *sbresv.Info) (sbreq.FailCode, error) {
+
 	stEntry, ok := e.SteadyMap.Get(steadyId)
 	if !ok {
-		return common.NewBasicError("Steady does not exist", nil, "id", steadyId)
+		return sbreq.SteadyNotExists, nil
 	}
 	ephemEntry, ok := stEntry.EphemResvMap.Get(ephemId)
 	if !ok {
 		// Ephemeral already cleaned
-		return nil
+		return sbreq.FailCodeNone, nil
 	}
 	cleaned, err := ephemEntry.CleanUpIdx(failed, last)
 	if err != nil {
-		return err
+		return sbreq.InvalidInfo, nil
 	}
 	stEntry.EphemResvMap.Delete(ephemId)
-	return stEntry.EphemeralBW.DeallocExpiring(uint64(cleaned.BwCls.Bps()), cleaned.ExpTick)
-}
-
-func (e *ephemAdm) CleanEphemRenew(ephem *sbextn.Ephemeral, p *sbreq.Pld) error {
-	// FIXME(roosd): implement
-	return nil
+	// An error should not occur since we sanity checked the info already and the
+	// expiration tick must be in the range.
+	err = stEntry.EphemeralBW.DeallocExpiring(uint64(cleaned.BwCls.Bps()), cleaned.ExpTick)
+	return sbreq.FailCodeNone, err
 }

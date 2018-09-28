@@ -198,7 +198,6 @@ func (r *resolver) handleSetupTimeout(entry *resvEntry, request *sbreq.EphemReq,
 		entry.ephemMeta.state = cleanUp
 	}
 	failedInfo := request.Block.Info.Copy()
-	failedInfo.FailHop = 0
 	reqstr := &EphemCleanSetup{
 		cleaner: &cleaner{
 			reqstr: &reqstr{
@@ -255,7 +254,7 @@ func (r *resolver) renewEphem(entry *resvEntry, ext *sbextn.Ephemeral,
 	if ephem == nil {
 		return false, common.NewBasicError("Unable to load ephem reservation from syncResv", nil)
 	}
-	ephemId := sibra.NewEphemIDRand(snet.DefNetwork.IA().A)
+	ephemId := ephem.GetCurrID()
 	reqstr := &EphemRenew{
 		reserver: &reserver{
 			reqstr: &reqstr{
@@ -304,7 +303,6 @@ func (r *resolver) handleRenewTimeout(entry *resvEntry, ephemId sibra.ID,
 		entry.ephemMeta.state = cleanUp
 	}
 	failedInfo := request.Block.Info.Copy()
-	failedInfo.FailHop = 0
 	reqstr := &EphemCleanRenew{
 		cleaner: &cleaner{
 			reqstr: &reqstr{

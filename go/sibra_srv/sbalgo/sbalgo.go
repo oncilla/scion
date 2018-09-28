@@ -75,8 +75,8 @@ type SteadyAdm interface {
 type EphemAdm interface {
 	AdmitEphemSetup(steady *sbextn.Steady, p *sbreq.Pld) (EphemRes, error)
 	AdmitEphemRenew(ephem *sbextn.Ephemeral, p *sbreq.Pld) (EphemRes, error)
-	CleanEphemSetup(steady *sbextn.Steady, p *sbreq.Pld) error
-	CleanEphemRenew(ephem *sbextn.Ephemeral, p *sbreq.Pld) error
+	CleanEphemSetup(steady *sbextn.Steady, p *sbreq.Pld) (sbreq.FailCode, error)
+	CleanEphemRenew(ephem *sbextn.Ephemeral, p *sbreq.Pld) (sbreq.FailCode, error)
 }
 
 type SteadyRes struct {

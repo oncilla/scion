@@ -112,10 +112,6 @@ func (s *SOField) SetMac(mac hash.Hash, info *Info, ids []sibra.ID, pLens []uint
 func (s *SOField) CalcMac(mac hash.Hash, info *Info, ids []sibra.ID, pLens []uint8,
 	sof common.RawBytes) (common.RawBytes, error) {
 
-	if info.FailHop != 0 {
-		return nil, common.NewBasicError("Invalid fail hop", nil, "expected", 0,
-			"actual", info.FailHop)
-	}
 	all := make(common.RawBytes, macInputLen)
 	if err := s.writeIFIDs(all[:3]); err != nil {
 		return nil, common.NewBasicError("Unable to write IFIDs", err)

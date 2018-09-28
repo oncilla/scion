@@ -62,8 +62,6 @@ type Info struct {
 	Index sibra.Index
 	// PathType is the path type.
 	PathType sibra.PathType
-	// FailHop is the fail hop. It is unset in an active reservation.
-	FailHop uint8
 }
 
 func NewInfoFromRaw(raw common.RawBytes) *Info {
@@ -73,7 +71,6 @@ func NewInfoFromRaw(raw common.RawBytes) *Info {
 		RLC:      sibra.RLC(raw[5]),
 		Index:    parseIdx(raw[6]),
 		PathType: parsePathType(raw[6]),
-		FailHop:  raw[7],
 	}
 }
 
@@ -98,7 +95,6 @@ func (i *Info) Write(b common.RawBytes) error {
 	b[4] = uint8(i.BwCls)
 	b[5] = uint8(i.RLC)
 	b[6] = i.packIdxPathType()
-	b[7] = i.FailHop
 	return nil
 }
 
@@ -113,13 +109,12 @@ func (i *Info) Copy() *Info {
 		RLC:      i.RLC,
 		Index:    i.Index,
 		PathType: i.PathType,
-		FailHop:  i.FailHop,
 	}
 }
 
 func (i *Info) String() string {
-	return fmt.Sprintf("Exp: %s BwCls: %v RLC: %v Idx: %d Path: %s FailHop: %d",
-		i.ExpTick.Time(), i.BwCls, i.RLC, i.Index, i.PathType, i.FailHop)
+	return fmt.Sprintf("Exp: %s BwCls: %v RLC: %v Idx: %d Path: %s",
+		i.ExpTick.Time(), i.BwCls, i.RLC, i.Index, i.PathType)
 }
 
 func (i *Info) Eq(o *Info) bool {

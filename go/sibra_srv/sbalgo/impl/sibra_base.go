@@ -23,14 +23,14 @@ import (
 	"github.com/scionproto/scion/go/sibra_srv/sbalgo/state"
 )
 
-var _ sbalgo.EphemAdm = (*algoBase)(nil)
+var _ sbalgo.EphemAdm = (*base)(nil)
 
-// AlgoSlow implements the SIBRA algorithm.
-type algoBase struct {
-	*ephemAdm
+// base implements the base for the slow and fast SIBRA algorithm.
+type base struct {
+	*ephem
 }
 
-func (s *algoBase) prevBw(p sbalgo.AdmParams) sibra.BwCls {
+func (s *base) prevBw(p sbalgo.AdmParams) sibra.BwCls {
 	minMax := p.Req.MaxBw
 	// Take minimum of all previously max offers.
 	if p.Req.Info.PathType.Reversed() {
@@ -51,7 +51,7 @@ func (s *algoBase) prevBw(p sbalgo.AdmParams) sibra.BwCls {
 	return minMax
 }
 
-func (s *algoBase) PromoteToSOFCreated(ifids sbalgo.IFTuple, id sibra.ID,
+func (s *base) PromoteToSOFCreated(ifids sbalgo.IFTuple, id sibra.ID,
 	info *sbresv.Info) error {
 
 	s.Lock()
@@ -71,7 +71,7 @@ func (s *algoBase) PromoteToSOFCreated(ifids sbalgo.IFTuple, id sibra.ID,
 	return nil
 }
 
-func (s *algoBase) PromoteToPending(ifs sbalgo.IFTuple, id sibra.ID, c *sbreq.ConfirmIndex) error {
+func (s *base) PromoteToPending(ifs sbalgo.IFTuple, id sibra.ID, c *sbreq.ConfirmIndex) error {
 	s.Lock()
 	defer s.Unlock()
 	stEntry, ok := s.SteadyMap.Get(id)
@@ -87,7 +87,7 @@ func (s *algoBase) PromoteToPending(ifs sbalgo.IFTuple, id sibra.ID, c *sbreq.Co
 	s.TempTable.Delete(id, c.Idx)
 	return nil
 }
-func (s *algoBase) PromoteToActive(ifids sbalgo.IFTuple, id sibra.ID, info *sbresv.Info,
+func (s *base) PromoteToActive(ifids sbalgo.IFTuple, id sibra.ID, info *sbresv.Info,
 	c *sbreq.ConfirmIndex) error {
 
 	s.Lock()
@@ -105,7 +105,7 @@ func (s *algoBase) PromoteToActive(ifids sbalgo.IFTuple, id sibra.ID, info *sbre
 	return nil
 }
 
-func (s *algoBase) validateIfids(ifids sbalgo.IFTuple, entry *state.SteadyResvEntry) error {
+func (s *base) validateIfids(ifids sbalgo.IFTuple, entry *state.SteadyResvEntry) error {
 	// Validate that the packet traverses the correct interfaces
 	if ifids.InIfid != entry.Ifids.InIfid || ifids.EgIfid != entry.Ifids.EgIfid {
 		return common.NewBasicError("Invalid interfaces", nil,
