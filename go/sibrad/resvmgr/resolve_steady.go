@@ -85,7 +85,7 @@ func (r *resolver) fetchSteadyResv(ctx context.Context,
 		for _, steadyId := range steadyIds {
 			if meta := r.store.getSteadyMeta(steadyId); meta != nil {
 				meta.Lock()
-				// TODO(roosd): clean up store.
+				// FIXME(roosd): Clean up store if meta expired or seg id does not match.
 				if meta.Meta.Expiry().Before(now) &&
 					meta.timestamp.Add(5*time.Second).Before(time.Now()) &&
 					bytes.Equal(meta.Meta.SegID(), reqs[i].SegID) {

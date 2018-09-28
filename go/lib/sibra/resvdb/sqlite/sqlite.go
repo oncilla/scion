@@ -342,6 +342,7 @@ func (b *Backend) Get(params *query.Params) ([]*query.Result, error) {
 }
 
 func (b *Backend) buildQuery(params *query.Params) string {
+	// FIXME(roosd): Redesign this to avoid possible SQL injections.
 	query := []string{
 		"SELECT DISTINCT s.RowID, s.ResvID, s.Block, s.Creation, s.Interfaces, " +
 			"s.Signature, s.WhiteList, s.Mtu FROM SteadyResvs s",
