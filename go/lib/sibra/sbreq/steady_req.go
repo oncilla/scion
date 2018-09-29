@@ -82,6 +82,7 @@ func SteadyReqFromRaw(raw common.RawBytes, t DataType, numHops int) (*SteadyReq,
 		AccBw:       sibra.BwCls(raw[offSteadyReqAcc]),
 		Split:       sibra.SplitCls(raw[offSteadyReqSplit]),
 		EndProps:    sibra.EndProps(raw[offSteadyReqProps]),
+		DataType:    t,
 		OfferFields: make([]*Offer, numHops),
 	}
 	off := offSteadyReqBaseID

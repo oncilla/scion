@@ -79,7 +79,7 @@ func NewSOFieldFromRaw(b common.RawBytes) (*SOField, error) {
 			"min", SOFieldLen, "actual", len(b))
 	}
 	sof := &SOField{
-		Continue: b[0]&0x80 != 1,
+		Continue: b[0]&0x80 != 0,
 		Ingress:  common.IFIDType(int(b[1])<<4 | int(b[2])>>4),
 		Egress:   common.IFIDType((int(b[2])&0xF)<<8 | int(b[3])),
 		Mac:      b[4 : 4+MacLen],

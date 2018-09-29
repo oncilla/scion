@@ -41,6 +41,7 @@ client server pingpong example.
 * integration tests
 * Support peering links and telescoping
 * Steady reservation clean-up/teardown
+* Enable request authentication (DRKey Infrastructure needs to be setup first)
 * Extract possible paths from beacons instead of fetching path from path manager
 * The COLIBRI daemon should be integrated into sciond or be a separate entity.
  Running one daemon per application is not possible, since COLIBRI specifies a 

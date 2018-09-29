@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	offEphemCleanFlags  = common.LineLen - 1
+	offEphemCleanFlags  = 0
 	flagEphemCleanSetup = 0x01
 )
 
@@ -97,7 +97,7 @@ func (c *EphemClean) Write(b common.RawBytes) error {
 			"min", c.Len(), "actual", len(b))
 	}
 	b[offEphemCleanFlags] = c.packFlags()
-	off, end := 0, common.LineLen
+	off, end := 0, 1
 	if c.Setup {
 		off, end = end, end+sibra.EphemIDLen
 		c.ID.Write(b[off:end])

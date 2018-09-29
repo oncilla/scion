@@ -19,8 +19,6 @@ import (
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/sibra"
-	"github.com/scionproto/scion/go/lib/sibra/sbreq"
-	"github.com/scionproto/scion/go/lib/sibra/sbresv"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -30,20 +28,10 @@ func Test_EphemeralRenewal(t *testing.T) {
 			&Base{
 				Forward:   true,
 				IsRequest: true,
-				Version:   Version,
+				Version:   sibra.Version,
 				PathLens:  []uint8{2, 3, 2},
 				IDs: []sibra.ID{sibra.NewEphemID(addr.AS(0), nil), sibra.NewSteadyID(addr.AS(1), 0),
 					sibra.NewSteadyID(addr.AS(2), 1), sibra.NewSteadyID(addr.AS(3), 4)},
-				Request: &sbreq.EphemReq{
-					Base: &sbreq.Base{
-						Type:     sbreq.REphmRenewal,
-						Accepted: true,
-					},
-					Block: &sbresv.Block{
-						Info:     &sbresv.Info{},
-						SOFields: make([]*sbresv.SOField, 5),
-					},
-				},
 			},
 		}
 		err := ephem.UpdateIndices()
@@ -155,21 +143,11 @@ func Test_EphemeralRenewal(t *testing.T) {
 		ephem := &Ephemeral{
 			&Base{
 				IsRequest: true,
-				Version:   Version,
+				Version:   sibra.Version,
 				SOFIndex:  4,
 				PathLens:  []uint8{2, 3, 2},
 				IDs: []sibra.ID{sibra.NewEphemID(addr.AS(0), nil), sibra.NewSteadyID(addr.AS(1), 0),
 					sibra.NewSteadyID(addr.AS(2), 1), sibra.NewSteadyID(addr.AS(3), 4)},
-				Request: &sbreq.EphemReq{
-					Base: &sbreq.Base{
-						Type:     sbreq.REphmRenewal,
-						Accepted: true,
-					},
-					Block: &sbresv.Block{
-						Info:     &sbresv.Info{},
-						SOFields: make([]*sbresv.SOField, 5),
-					},
-				},
 			},
 		}
 		err := ephem.UpdateIndices()
@@ -278,64 +256,3 @@ func Test_EphemeralRenewal(t *testing.T) {
 	})
 
 }
-
-/* // TODO(roosd): implement tests
-func Test_NewSteadySetup(t *testing.T) {
-	Convey("NewSteadySetup should return correct extn", t, func() {
-		r := req.NewSteadyReq(req.RSteadySetup, 1, 2, 3, resv.PathTypeUp, 2)
-		SoMsg("type", r.Base.Type, ShouldEqual, req.RSteadySetup)
-		e, err := NewSteadySetup(r, resv.ID{1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
-		SoMsg("err", err, ShouldBeNil)
-		SoMsg("len", e.Len(), ShouldEqual, common.ExtnFirstLineLen+16+(2+1)*common.LineLen)
-		SoMsg("Steady", e.Steady, ShouldBeTrue)
-		SoMsg("Setup", e.Setup, ShouldBeTrue)
-		SoMsg("Forward", e.Forward, ShouldBeTrue)
-		SoMsg("BestEffort", e.BestEffort, ShouldBeFalse)
-		SoMsg("IsRequest", e.IsRequest, ShouldBeTrue)
-		SoMsg("Version", e.Version, ShouldEqual, 0)
-		SoMsg("SOFIndex", e.SOFIndex, ShouldEqual, 0)
-		SoMsg("PathLens", e.PathLens, ShouldResemble, []byte{2, 0, 0})
-		SoMsg("IDs", e.IDs, ShouldResemble, []resv.ID{{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}})
-		SoMsg("ActiveBlocks", e.ActiveBlocks, ShouldResemble, []*resv.Block{})
-		SoMsg("Request", e.Request, ShouldResemble, r)
-		SoMsg("CurrHop", e.CurrHop, ShouldResemble, 0)
-		SoMsg("TotalHops", e.TotalHops, ShouldResemble, 2)
-		SoMsg("CurrSteady", e.CurrSteady, ShouldResemble, 0)
-		SoMsg("RelSteadyHop", e.RelSteadyHop, ShouldResemble, 0)
-		SoMsg("TotalSteady", e.TotalSteady, ShouldResemble, 1)
-	})
-}
-
-
-func Test_SteadyExtnPack(t *testing.T) {
-	Convey("NewSteadySetup should return correct extn", t, func() {
-		r := req.NewSteadyReq(req.RSteadySetup, 1, 2, 3, resv.PathTypeUp, 2)
-		SoMsg("type", r.Base.Type, ShouldEqual, req.RSteadySetup)
-		e, err := NewSteadySetup(r, resv.ID{1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
-		SoMsg("err", err, ShouldBeNil)
-		err = e.NextSOFIndex()
-		SoMsg("err", err, ShouldBeNil)
-		packed, err := e.Pack()
-		SoMsg("err", err, ShouldBeNil)
-		parsed, err := SteadyFromRaw(packed)
-		SoMsg("err", err, ShouldBeNil)
-
-		SoMsg("len", parsed.Len(), ShouldEqual, common.ExtnFirstLineLen+16+(2+1)*common.LineLen)
-		SoMsg("Steady", parsed.Steady, ShouldBeTrue)
-		SoMsg("Setup", parsed.Setup, ShouldBeTrue)
-		SoMsg("Forward", parsed.Forward, ShouldBeTrue)
-		SoMsg("BestEffort", parsed.BestEffort, ShouldBeFalse)
-		SoMsg("IsRequest", parsed.IsRequest, ShouldBeTrue)
-		SoMsg("Version", parsed.Version, ShouldEqual, 0)
-		SoMsg("SOFIndex", parsed.SOFIndex, ShouldEqual, 1)
-		SoMsg("PathLens", parsed.PathLens, ShouldResemble, []byte{2, 0, 0})
-		SoMsg("IDs", parsed.IDs, ShouldResemble, []resv.ID{{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}})
-		SoMsg("ActiveBlocks", parsed.ActiveBlocks, ShouldResemble, []*resv.Block{})
-		SoMsg("Request", parsed.Request, ShouldResemble, r)
-		SoMsg("CurrHop", parsed.CurrHop, ShouldResemble, 1)
-		SoMsg("TotalHops", parsed.TotalHops, ShouldResemble, 2)
-		SoMsg("CurrSteady", parsed.CurrSteady, ShouldResemble, 0)
-		SoMsg("RelSteadyHop", parsed.RelSteadyHop, ShouldResemble, 1)
-		SoMsg("TotalSteady", parsed.TotalSteady, ShouldResemble, 1)
-	})
-}*/
