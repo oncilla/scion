@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package topofetcher
+package discovery
 
 import (
 	"context"
 	"net/http"
 
 	"github.com/scionproto/scion/go/lib/common"
-	"github.com/scionproto/scion/go/lib/discovery"
-	"github.com/scionproto/scion/go/lib/discovery/discoverypool"
+	"github.com/scionproto/scion/go/lib/healthpool/svcinstance"
+	"github.com/scionproto/scion/go/lib/periodic"
 	"github.com/scionproto/scion/go/lib/topology"
 )
 
-var _ discovery.Fetcher = (*Fetcher)(nil)
+var _ periodic.Task = (*Fetcher)(nil)
 
 // Callbacks are used to inform the client. The functions are called when
 // an associated event occurs. If the function is nil, it is ignored.
@@ -40,35 +40,13 @@ type Callbacks struct {
 // Fetcher is used to fetch a new topology file from the discovery service.
 type Fetcher struct {
 	// Pool is a Pool of discovery services
-	Pool discovery.InstancePool
+	Pool *svcinstance.Pool
 	// Params contains the parameters for fetching the topology.
-	Params discovery.FetchParams
+	Params FetchParams
 	// Callbacks contains the callbacks.
 	Callbacks Callbacks
 	// Client is the http Client. If nil, the default Client is used.
 	Client *http.Client
-}
-
-// New initializes a fetcher with the given values. Topo is provided to
-// initialize the pool with discovery services.
-func New(svcInfo topology.IDAddrMap, params discovery.FetchParams,
-	clbks Callbacks, client *http.Client) (*Fetcher, error) {
-
-	var err error
-	f := &Fetcher{
-		Params:    params,
-		Callbacks: clbks,
-		Client:    client,
-	}
-	if f.Pool, err = discoverypool.New(svcInfo); err != nil {
-		return nil, err
-	}
-	return f, nil
-}
-
-// UpdateInstances updates the discovery service pool.
-func (f *Fetcher) UpdateInstances(svcInfo topology.IDAddrMap) error {
-	return f.Pool.Update(svcInfo)
 }
 
 // Run fetches a new topology file from the discovery service and calls the
@@ -90,15 +68,10 @@ func (f *Fetcher) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	topo, raw, err := discovery.FetchTopoRaw(ctx, f.Params, ds.Addr(), f.Client)
+	topo, raw, err := FetchTopoRaw(ctx, f.Params, ds.Addr(), f.Client)
 	if err != nil {
 		ds.Fail()
 		return err
-	}
-	// Update DS server entries based on new topo.
-	err = f.Pool.Update(topo.DS)
-	if err != nil {
-		return common.NewBasicError("Unable to update pool", err)
 	}
 	// Notify the client.
 	if f.Callbacks.Raw != nil {

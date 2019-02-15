@@ -28,7 +28,8 @@ import (
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/discovery"
-	"github.com/scionproto/scion/go/lib/discovery/topofetcher"
+	"github.com/scionproto/scion/go/lib/healthpool"
+	"github.com/scionproto/scion/go/lib/healthpool/svcinstance"
 	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/periodic"
 	"github.com/scionproto/scion/go/lib/topology"
@@ -72,19 +73,26 @@ func realMain() int {
 		return 1
 	}
 	var writeOnce sync.Once
-	fetcher, err := topofetcher.New(
-		topo.DS,
-		discovery.FetchParams{
+	pool, err := svcinstance.NewPool(topo.DS, healthpool.PoolOptions{})
+	if err != nil {
+		log.Crit("Unable to initialize pool", "err", err)
+		return 1
+	}
+	fetcher := &discovery.Fetcher{
+		Pool: pool,
+		Params: discovery.FetchParams{
 			File:  file(),
 			Mode:  mode(),
 			Https: *https,
 		},
-		topofetcher.Callbacks{
+		Callbacks: discovery.Callbacks{
 			Error: func(err error) {
 				log.Error("Unable to fetch topology", "err", err)
 			},
 			Update: func(topo *topology.Topo) {
-				log.Info("Fetched new topology", "ia", topo.ISD_AS, "ts", topo.Timestamp)
+				err := pool.Update(topo.DS)
+				log.Info("Fetched new topology", "ia", topo.ISD_AS, "ts", topo.Timestamp,
+					"err", err)
 			},
 			Raw: func(raw common.RawBytes, _ *topology.Topo) {
 				writeOnce.Do(func() {
@@ -98,10 +106,7 @@ func realMain() int {
 					log.Info("Topology file written", "file", out)
 				})
 			},
-		}, nil)
-	if err != nil {
-		log.Crit("Unable to initialize fetcher", "err", err)
-		return 1
+		},
 	}
 	log.Info("Starting periodic fetching", "period", *period)
 	ticker := periodic.NewTicker(*period)

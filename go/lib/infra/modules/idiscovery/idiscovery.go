@@ -42,8 +42,9 @@ import (
 
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/discovery"
-	"github.com/scionproto/scion/go/lib/discovery/topofetcher"
 	"github.com/scionproto/scion/go/lib/fatal"
+	"github.com/scionproto/scion/go/lib/healthpool"
+	"github.com/scionproto/scion/go/lib/healthpool/svcinstance"
 	"github.com/scionproto/scion/go/lib/infra/modules/itopo"
 	"github.com/scionproto/scion/go/lib/log"
 	"github.com/scionproto/scion/go/lib/periodic"
@@ -233,7 +234,7 @@ func startPeriodicFetcher(cfg FetchConfig, handler TopoHandler, params discovery
 
 // startInitialPeriod fetches the topology every second for the initial period,
 // or until the a topology has been fetched successfully.
-func (r *Runner) startInitialPeriod(fetcher *task, cfg FetchConfig) {
+func (r *Runner) startInitialPeriod(fetcher periodic.Task, cfg FetchConfig) {
 	go func() {
 		defer log.LogPanicAndExit()
 		ticker := time.NewTicker(time.Second)
@@ -259,10 +260,10 @@ func (r *Runner) startInitialPeriod(fetcher *task, cfg FetchConfig) {
 }
 
 // execFailAction executes the FailAction.
-func (r *Runner) execFailAction(fetcher *task, cfg FetchConfig) {
+func (r *Runner) execFailAction(fetcher periodic.Task, cfg FetchConfig) {
 	switch cfg.Connect.FailAction {
 	case FailActionContinue:
-		log.Warn("[discovery] Unable to get a valid initial topology, ignoring")
+		log.Warn("[idiscovery] Unable to get a valid initial topology, ignoring")
 		r.startRegularFetcher(fetcher, cfg)
 	default:
 		fatal.Fatal(common.NewBasicError("Unable to get a valid initial topology", nil))
@@ -271,7 +272,7 @@ func (r *Runner) execFailAction(fetcher *task, cfg FetchConfig) {
 
 // startRegularFetcher starts a periodic fetcher with the configured interval and timeout.
 // If the runner is in the process of stopping, no fetcher is started.
-func (r *Runner) startRegularFetcher(fetcher *task, cfg FetchConfig) {
+func (r *Runner) startRegularFetcher(fetcher periodic.Task, cfg FetchConfig) {
 	r.fetcherMtx.Lock()
 	defer r.fetcherMtx.Unlock()
 	if r.stopping {
@@ -282,7 +283,7 @@ func (r *Runner) startRegularFetcher(fetcher *task, cfg FetchConfig) {
 }
 
 // startFetch starts a go routine that executes the fetch task.
-func (r *Runner) startFetch(fetcher *task, timeout time.Duration) {
+func (r *Runner) startFetch(fetcher periodic.Task, timeout time.Duration) {
 	go func() {
 		defer log.LogPanicAndExit()
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -306,7 +307,7 @@ func (r *Runner) handler(topo *topology.Topo) (bool, error) {
 type task struct {
 	log.Logger
 	handler  TopoHandler
-	fetcher  *topofetcher.Fetcher
+	fetcher  *discovery.Fetcher
 	filename string
 }
 
@@ -314,42 +315,42 @@ type task struct {
 // service and calls the provided handler on the received topology. If the handler
 // indicates an update, and filename is set, the topology is written.
 func NewFetcher(handler TopoHandler, params discovery.FetchParams,
-	filename string, client *http.Client) (*task, error) {
+	filename string, client *http.Client) (periodic.Task, error) {
 
 	if handler == nil {
 		return nil, common.NewBasicError("handler must not be nil", nil)
+	}
+	pool, err := svcinstance.NewPool(itopo.Get().DS, healthpool.PoolOptions{})
+	if err != nil {
+		return nil, common.NewBasicError("Unable to initialize pool", err)
 	}
 	t := &task{
 		Logger:   log.New("Module", "Discovery", "Mode", params.Mode),
 		handler:  handler,
 		filename: filename,
 	}
-	var err error
-	t.fetcher, err = topofetcher.New(
-		itopo.Get().DS,
-		params,
-		topofetcher.Callbacks{
+	t.fetcher = &discovery.Fetcher{
+		Pool:   pool,
+		Params: params,
+		Callbacks: discovery.Callbacks{
 			Error: t.handleErr,
 			Raw:   t.handleRaw,
 		},
-		client,
-	)
-	if err != nil {
-		return nil, common.NewBasicError("Unable to initialize fetcher", err)
+		Client: client,
 	}
 	return t, nil
 }
 
 func (t *task) Run(ctx context.Context) {
-	if err := t.fetcher.UpdateInstances(itopo.Get().DS); err != nil {
-		log.Error("[discovery] Unable to update instances", "err", err)
+	if err := t.fetcher.Pool.Update(itopo.Get().DS); err != nil {
+		log.Error("[idiscovery] Unable to update instances", "err", err)
 		return
 	}
 	t.fetcher.Run(ctx)
 }
 
 func (t *task) handleErr(err error) {
-	t.Error("[discovery] Unable to fetch topology", "err", err)
+	t.Error("[idiscovery] Unable to fetch topology", "err", err)
 }
 
 func (t *task) handleRaw(raw common.RawBytes, topo *topology.Topo) {
@@ -358,19 +359,19 @@ func (t *task) handleRaw(raw common.RawBytes, topo *topology.Topo) {
 		return
 	}
 	if err := util.WriteFile(t.filename, raw, 0644); err != nil {
-		t.Error("[discovery] Unable to write new topology to filesystem", "err", err)
+		t.Error("[idiscovery] Unable to write new topology to filesystem", "err", err)
 		return
 	}
-	t.Trace("[discovery] Topology written to filesystem",
+	t.Trace("[idiscovery] Topology written to filesystem",
 		"file", t.filename, "params", t.fetcher.Params)
 }
 
 func (t *task) callHandler(topo *topology.Topo) (bool, error) {
 	updated, err := t.handler(topo)
 	if err != nil {
-		t.Error("[discovery] Unable to handle topology", "err", err)
+		t.Error("[idiscovery] Unable to handle topology", "err", err)
 	} else if updated {
-		t.Trace("[discovery] Set topology", "params", t.fetcher.Params)
+		t.Trace("[idiscovery] Set topology", "params", t.fetcher.Params)
 	}
 	return updated, err
 }
