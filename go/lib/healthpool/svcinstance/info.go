@@ -21,28 +21,32 @@ import (
 	"github.com/scionproto/scion/go/lib/healthpool"
 )
 
+// Info holds the information for a service instance.
 type Info struct {
 	info *info
 }
 
+// Fail increases the fail count. It shall be called when a request to the
+// service instance fails.
 func (i Info) Fail() {
 	i.info.Fail()
 }
 
+// Addr returns the service instance address.
 func (i Info) Addr() *addr.AppAddr {
 	return i.info.addrCopy()
 }
 
-type info struct {
-	healthpool.Info
-	//
-	mtx  sync.RWMutex
-	addr *addr.AppAddr
-	key  healthpool.InfoKey
+// Name returns the service instance name.
+func (i Info) Name() string {
+	return i.info.name
 }
 
-func (i *info) Key() healthpool.InfoKey {
-	return i.key
+type info struct {
+	healthpool.Info
+	mtx  sync.RWMutex
+	addr *addr.AppAddr
+	name string
 }
 
 func (i *info) addrCopy() *addr.AppAddr {
