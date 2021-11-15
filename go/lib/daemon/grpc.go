@@ -25,10 +25,8 @@ import (
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/ctrl/path_mgmt"
 	"github.com/scionproto/scion/go/lib/serrors"
-	"github.com/scionproto/scion/go/lib/slayers/path/scion"
 	"github.com/scionproto/scion/go/lib/snet"
 	"github.com/scionproto/scion/go/lib/snet/path"
-	"github.com/scionproto/scion/go/lib/spath"
 	"github.com/scionproto/scion/go/lib/topology"
 	libgrpc "github.com/scionproto/scion/go/pkg/grpc"
 	sdpb "github.com/scionproto/scion/go/pkg/proto/daemon"
@@ -212,21 +210,10 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 		linkType[i] = linkTypeFromPB(v)
 	}
 
-	var epicData spath.EpicData
-	if p.EpicAuths != nil {
-		epicData = spath.EpicData{
-			AuthPHVF: p.EpicAuths.AuthPhvf,
-			AuthLHVF: p.EpicAuths.AuthLhvf,
-			Counter:  0,
-		}
-	}
-
-	return path.Path{
+	res := path.Path{
 		Dst: dst,
-		SPath: spath.Path{
-			Raw:      p.Raw,
-			Type:     scion.PathType,
-			EpicData: epicData,
+		DataplanePath: path.SCION{
+			Raw: p.Raw,
 		},
 		NextHop: underlayA,
 		Meta: snet.PathMetadata{
@@ -240,7 +227,18 @@ func convertPath(p *sdpb.Path, dst addr.IA) (path.Path, error) {
 			InternalHops: p.InternalHops,
 			Notes:        p.Notes,
 		},
-	}, nil
+	}
+
+	if p.EpicAuths == nil {
+		return res, nil
+	}
+
+	res.DataplanePath = &path.EPIC{
+		AuthPHVF: p.EpicAuths.AuthPhvf,
+		AuthLHVF: p.EpicAuths.AuthLhvf,
+		SCION:    p.Raw,
+	}
+	return res, nil
 }
 
 func linkTypeFromPB(lt sdpb.LinkType) snet.LinkType {

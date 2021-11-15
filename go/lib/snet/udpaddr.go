@@ -24,7 +24,6 @@ import (
 
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/serrors"
-	"github.com/scionproto/scion/go/lib/spath"
 )
 
 var addrRegexp = regexp.MustCompile(`^(?P<ia>\d+-[\d:A-Fa-f]+),(?P<host>.+)$`)
@@ -32,7 +31,7 @@ var addrRegexp = regexp.MustCompile(`^(?P<ia>\d+-[\d:A-Fa-f]+),(?P<host>.+)$`)
 // UDPAddr to be used when UDP host.
 type UDPAddr struct {
 	IA      addr.IA
-	Path    spath.Path
+	Path    DataplanePath
 	NextHop *net.UDPAddr
 	Host    *net.UDPAddr
 }

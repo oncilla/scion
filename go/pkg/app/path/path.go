@@ -33,6 +33,7 @@ import (
 	"github.com/scionproto/scion/go/lib/pathpol"
 	"github.com/scionproto/scion/go/lib/serrors"
 	"github.com/scionproto/scion/go/lib/snet"
+	"github.com/scionproto/scion/go/lib/snet/path"
 	"github.com/scionproto/scion/go/pkg/pathprobe"
 )
 
@@ -85,9 +86,14 @@ func Choose(
 	if o.epic {
 		// Only use paths that support EPIC and intra-AS (empty) paths.
 		var epicPaths = make([]snet.Path, 0, len(paths))
-		for _, path := range paths {
-			if path.Path().SupportsEpic() || path.Path().IsEmpty() {
-				epicPaths = append(epicPaths, path)
+		for _, p := range paths {
+			if epic, isEpic := p.Dataplane().(*path.EPIC); isEpic {
+				epic.EnableEpic(true)
+				epicPaths = append(epicPaths, p)
+			}
+			// Also include empty paths for AS internal communication.
+			if _, isEmpty := p.Dataplane().(path.Empty); isEmpty {
+				epicPaths = append(epicPaths, p)
 			}
 		}
 		if len(epicPaths) == 0 {

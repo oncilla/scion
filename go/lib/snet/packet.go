@@ -23,9 +23,6 @@ import (
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/serrors"
 	"github.com/scionproto/scion/go/lib/slayers"
-	"github.com/scionproto/scion/go/lib/slayers/path"
-	"github.com/scionproto/scion/go/lib/slayers/path/epic"
-	"github.com/scionproto/scion/go/lib/slayers/path/scion"
 	"github.com/scionproto/scion/go/lib/spath"
 )
 
@@ -520,6 +517,10 @@ func (p *Packet) Serialize() error {
 	if p.Payload == nil {
 		return serrors.New("no payload set")
 	}
+	if p.Path == nil {
+		return serrors.New("no path set")
+	}
+
 	var packetLayers []gopacket.SerializableLayer
 
 	var scionLayer slayers.SCION
@@ -550,41 +551,11 @@ func (p *Packet) Serialize() error {
 		return serrors.WrapStr("settting source address", err)
 	}
 
-	scionLayer.PathType = p.Path.Type
-	scionLayer.Path, err = path.NewPath(p.Path.Type)
-	if err != nil {
-		return err
-	}
-	if err = scionLayer.Path.DecodeFromBytes(p.Path.Raw); err != nil {
-		return serrors.WrapStr("decoding path", err)
-	}
-
+	// XXX(roosd): Currently, this does not take the extension headers
+	// into considertation.
 	scionLayer.PayloadLen = uint16(p.Payload.Length())
-	if p.Path.Type == scion.PathType {
-		sp := scionLayer.Path.(*scion.Raw)
-
-		if p.Path.EpicEnabled() {
-			// Convert to EPIC path type
-			ep := &epic.Path{
-				ScionPath: sp,
-			}
-			if (&p.Path).AddEpicPktID(ep) != nil {
-				return err
-			}
-			if p.Path.AddEpicHVFs(ep, &scionLayer) != nil {
-				return err
-			}
-
-			scionLayer.Path = ep
-			scionLayer.PathType = epic.PathType
-
-		} else {
-			// XXX this is for convenience when debugging with delve
-			scionLayer.Path, err = sp.ToDecoded()
-			if err != nil {
-				return err
-			}
-		}
+	if err := p.Path.SetPath(&scionLayer); err != nil {
+		return serrors.WrapStr("setting path", err)
 	}
 
 	packetLayers = append(packetLayers, &scionLayer)
@@ -614,12 +585,8 @@ type PacketInfo struct {
 	// Source contains the source address. If it is an SVC address, packet
 	// serialization will return an error.
 	Source SCIONAddress
-	// Path contains a SCION forwarding path. The field must be nil or an empty
-	// path if the source and destination are inside the same AS.
-	//
-	// If the source and destination are in different ASes but the path is
-	// nil or empty, an error is returned during serialization.
-	Path spath.Path
+	// Path contains a SCION forwarding path. This field must not be nil.
+	Path DataplanePath
 	// Payload is the Payload of the message.
 	Payload Payload
 }

@@ -377,13 +377,17 @@ func (c *client) getRemote(ctx context.Context, n int) (snet.Path, error) {
 			"errors", len(c.errorPaths),
 		))
 	}
+
 	// Extract forwarding path from the SCION Daemon response
-	remote.Path = path.Path()
+	remote.Path = path.Dataplane()
+
 	// If the epic flag is set, try to use the EPIC path type header
 	if epic {
-		if err = remote.Path.EnableEpic(); err != nil {
-			return nil, err
+		enabler, ok := remote.Path.(interface{ EnableEpic(bool) })
+		if !ok {
+			return nil, serrors.New("non-epic path selected")
 		}
+		enabler.EnableEpic(true)
 	}
 	remote.NextHop = path.UnderlayNextHop()
 	return path, nil
