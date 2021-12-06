@@ -23,7 +23,7 @@ import (
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/serrors"
 	"github.com/scionproto/scion/go/lib/slayers"
-	"github.com/scionproto/scion/go/lib/spath"
+	"github.com/scionproto/scion/go/lib/slayers/path"
 )
 
 // Payload is the payload of the message, use the different payload type to
@@ -321,6 +321,21 @@ func toLayers(scmpPld SCMPPayload,
 	return l
 }
 
+// RawPath is the unprocessed path that is read from a received SCION packet.
+//
+// Packets that are received on the SCIONPacketConn contain a struct of this
+// type in the Path field.
+type RawPath struct {
+	PathType path.Type
+	Raw      []byte
+}
+
+// SetPath is a dummy method to implement the DataplanePath interface. Consumers
+// of SCIONPacketConn need to extract the path and handle it appropriately.
+func (RawPath) SetPath(*slayers.SCION) error {
+	return serrors.New("snet.RawPath does not support SetPath")
+}
+
 // Packet describes a SCION packet.
 type Packet struct {
 	Bytes
@@ -369,17 +384,18 @@ func (p *Packet) Decode() error {
 	}
 	p.Destination = SCIONAddress{IA: scionLayer.DstIA, Host: dstHost}
 	p.Source = SCIONAddress{IA: scionLayer.SrcIA, Host: srcHost}
-	// A path of length 4 is an empty path, because it only contains the mandatory
-	// minimal header.
-	if l := scionLayer.Path.Len(); l > 4 {
-		pathCopy := make([]byte, scionLayer.Path.Len())
-		if err := scionLayer.Path.SerializeTo(pathCopy); err != nil {
+
+	rpath := RawPath{
+		PathType: scionLayer.Path.Type(),
+	}
+	if l := scionLayer.Path.Len(); l != 0 {
+		rpath.Raw = make([]byte, scionLayer.Path.Len())
+		if err := scionLayer.Path.SerializeTo(rpath.Raw); err != nil {
 			return serrors.WrapStr("extracting path", err)
 		}
-		p.Path = spath.Path{Raw: pathCopy, Type: scionLayer.PathType}
-	} else {
-		p.Path = spath.Path{}
 	}
+	p.Path = rpath
+
 	switch l4 {
 	case slayers.LayerTypeSCIONUDP:
 		p.Payload = UDPPayload{

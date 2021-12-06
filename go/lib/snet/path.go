@@ -24,9 +24,7 @@ import (
 	"github.com/scionproto/scion/go/lib/addr"
 	"github.com/scionproto/scion/go/lib/common"
 	"github.com/scionproto/scion/go/lib/slayers"
-
 	// "github.com/scionproto/scion/go/lib/serrors"
-	"github.com/scionproto/scion/go/lib/spath"
 )
 
 const (
@@ -207,7 +205,7 @@ func Fingerprint(path Path) PathFingerprint {
 // temporary solution where a full path cannot be reconstituted from other
 // objects, notably snet.UDPAddr and snet.SVCAddr.
 type partialPath struct {
-	spath       spath.Path
+	dataplane   DataplanePath
 	underlay    *net.UDPAddr
 	destination addr.IA
 }
@@ -216,8 +214,8 @@ func (p *partialPath) UnderlayNextHop() *net.UDPAddr {
 	return p.underlay
 }
 
-func (p *partialPath) Path() spath.Path {
-	return p.spath.Copy()
+func (p *partialPath) Dataplane() DataplanePath {
+	return p.dataplane
 }
 
 func (p *partialPath) Interfaces() []PathInterface {
@@ -230,9 +228,4 @@ func (p *partialPath) Destination() addr.IA {
 
 func (p *partialPath) Metadata() *PathMetadata {
 	return nil
-}
-
-func (p *partialPath) String() string {
-	return fmt.Sprintf("{spath: %s, underlay: %s, dest: %s}",
-		&p.spath, p.underlay, p.destination)
 }
