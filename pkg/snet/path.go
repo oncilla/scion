@@ -39,6 +39,14 @@ type DataplanePath interface {
 	SetPath(scion *slayers.SCION) error
 }
 
+// MTUer describes an additional optional behavior of a DataplanePath that is
+// not required to be implemented by all DataplanePath implementations.
+type MTUer interface {
+	// GetMTU returns the path MTU. The zero return value indicates that the
+	// path MTU is unknown.
+	GetMTU() uint16
+}
+
 // Path is an abstract representation of a path. Most applications do not need
 // access to the raw internals.
 //
