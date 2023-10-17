@@ -99,6 +99,14 @@ func CounterWith(c Counter, labelValues ...string) Counter {
 	return c.With(labelValues...)
 }
 
+// CounterReset resets the passed in counter.
+// This is a no-op if c is nil.
+func CounterReset(c Counter) {
+	if c != nil {
+		c.Reset()
+	}
+}
+
 // GaugeSet sets the passed in gauge to the value specified.
 // This is a no-op if g is nil.
 func GaugeSet(g Gauge, value float64) {
@@ -143,6 +151,14 @@ func GaugeWith(g Gauge, labelValues ...string) Gauge {
 	return g.With(labelValues...)
 }
 
+// GaugeReset resets the passed in gauge.
+// This is a no-op if g is nil.
+func GaugeReset(g Gauge) {
+	if g != nil {
+		g.Reset()
+	}
+}
+
 // HistogramObserve adds an observation to the histogram.
 // This is a no-op if h is nil.
 func HistogramObserve(h Histogram, value float64) {
@@ -157,4 +173,12 @@ func HistogramWith(h Histogram, labelValues ...string) Histogram {
 		return nil
 	}
 	return h.With(labelValues...)
+}
+
+// HistogramReset resets the passed in histogram.
+// This is a no-op if h is nil.
+func HistogramReset(h Histogram) {
+	if h != nil {
+		h.Reset()
+	}
 }
