@@ -55,6 +55,7 @@ import (
 type Counter interface {
 	With(labelValues ...string) Counter
 	Add(delta float64)
+	Reset()
 }
 
 // Gauge describes a metric that takes specific values over time.
@@ -63,6 +64,7 @@ type Gauge interface {
 	With(labelValues ...string) Gauge
 	Set(value float64)
 	Add(delta float64)
+	Reset()
 }
 
 // Histogram describes a metric that takes repeated observations of the same
@@ -72,6 +74,7 @@ type Gauge interface {
 type Histogram interface {
 	With(labelValues ...string) Histogram
 	Observe(value float64)
+	Reset()
 }
 
 // CounterAdd increases the passed in counter by the amount specified.
