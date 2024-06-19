@@ -27,6 +27,7 @@ import (
 	"github.com/scionproto/scion/pkg/addr"
 	"github.com/scionproto/scion/pkg/log"
 	"github.com/scionproto/scion/pkg/metrics"
+	metrics2 "github.com/scionproto/scion/pkg/metrics/v2"
 	"github.com/scionproto/scion/pkg/private/common"
 	"github.com/scionproto/scion/pkg/private/serrors"
 	"github.com/scionproto/scion/pkg/slayers/path/scion"
@@ -68,7 +69,7 @@ type DefaultPathWatcherFactory struct {
 	// remote.
 	ProbesSendErrors func(remote addr.IA) metrics.Counter
 
-	SCMPErrors             metrics.Counter
+	SCMPErrors             metrics2.Counter
 	SCIONPacketConnMetrics snet.SCIONPacketConnMetrics
 }
 
