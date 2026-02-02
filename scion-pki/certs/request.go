@@ -117,7 +117,10 @@ by specifying the \--out flag.`,
 			if err := envFlags.LoadExternalVars(); err != nil {
 				return err
 			}
-			daemonAddr := envFlags.Daemon()
+			daemonAddr, err := envFlags.Daemon()
+			if err != nil {
+				return serrors.WrapNoStack("resolving SCION environment", err)
+			}
 			localIP := net.IP(envFlags.Local().AsSlice())
 			log.Debug("Resolved SCION environment flags",
 				"daemon", daemonAddr,

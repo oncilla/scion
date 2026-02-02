@@ -58,7 +58,10 @@ case, the host could have multiple SCION addresses.
 			if err := envFlags.LoadExternalVars(); err != nil {
 				return err
 			}
-			daemonAddr := envFlags.Daemon()
+			daemonAddr, err := envFlags.Daemon()
+			if err != nil {
+				return serrors.WrapNoStack("resolving SCION environment", err)
+			}
 
 			cmd.SilenceUsage = true
 			ctx, cancelF := context.WithTimeout(cmd.Context(), time.Second)

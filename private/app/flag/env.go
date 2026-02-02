@@ -20,6 +20,7 @@ import (
 	"io/fs"
 	"net/netip"
 	"os"
+	"slices"
 	"sync"
 
 	"github.com/spf13/pflag"
@@ -86,6 +87,7 @@ type SCIONEnvironment struct {
 	localFlag  *pflag.Flag
 	file       env.SCION
 	filepath   string
+	fileLoaded bool
 
 	mtx sync.Mutex
 }
@@ -128,7 +130,11 @@ func (e *SCIONEnvironment) LoadExternalVars() error {
 // from the environment file are not considered.
 func (e *SCIONEnvironment) loadFile() error {
 	if e.filepath == "" {
-		e.filepath = defaultEnvironmentFile
+		file := defaultEnvironmentFile
+		if f := os.Getenv("SCION_ENVIRONMENT_FILE"); f != "" {
+			file = f
+		}
+		e.filepath = file
 	}
 
 	raw, err := os.ReadFile(e.filepath)
@@ -142,6 +148,7 @@ func (e *SCIONEnvironment) loadFile() error {
 	if err := json.Unmarshal(raw, &e.file); err != nil {
 		return serrors.Wrap("parsing file", err)
 	}
+	e.fileLoaded = true
 	return nil
 }
 
@@ -167,26 +174,95 @@ func (e *SCIONEnvironment) loadEnv() error {
 // the following sources with the precedence as listed:
 //  1. Command line flag
 //  2. Environment variable
-//  3. Environment configuration file
-//  4. Default value.
-func (e *SCIONEnvironment) Daemon() string {
+//  3. Environment configuration file with defaultIA or --isd-as flag
+//  4. Default value (only if nothing is set).
+//
+// If no defaultIA is set but there is only one AS in the file, use that AS's daemon address.
+// If no defaultIA is set but there are multiple ASes in the file, return an error.
+// If --isd-as is set but the AS does not exist in the file, return an error.
+func (e *SCIONEnvironment) Daemon() (string, error) {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 
+	// Priority 1: Command line flag
 	if e.sciondFlag != nil && e.sciondFlag.Changed {
-		return e.sciondFlag.Value.String()
+		return e.sciondFlag.Value.String(), nil
 	}
+
+	// Priority 2: Environment variable
 	if e.sciondEnv != nil {
-		return *e.sciondEnv
+		return *e.sciondEnv, nil
 	}
-	ia := e.file.General.DefaultIA
-	if e.iaFlag != nil && e.iaFlag.Changed {
-		ia = e.ia
+
+	// Priority 3: Environment configuration file
+	if e.fileLoaded {
+		ases := make([]addr.IA, 0, len(e.file.ASes))
+		{
+			for ia := range e.file.ASes {
+				ases = append(ases, ia)
+			}
+			slices.Sort(ases)
+		}
+
+		// Check if --isd-as flag is set
+		if e.iaFlag != nil && e.iaFlag.Changed {
+			as, ok := e.file.ASes[e.ia]
+			switch {
+			case as.DaemonAddress != "":
+				return as.DaemonAddress, nil
+			case ok:
+				return "", serrors.New("isd-as has no daemon configured in environment file",
+					"isd-as", e.ia, "file", e.filepath, "available", ases,
+				)
+			default:
+				return "", serrors.New("isd-as not found in environment file",
+					"isd-as", e.ia, "file", e.filepath, "available", ases,
+				)
+			}
+		}
+
+		// Check if default IA is set in the file
+		if ia := e.file.General.DefaultIA; !ia.IsZero() {
+			as, ok := e.file.ASes[ia]
+			switch {
+			case as.DaemonAddress != "":
+				return as.DaemonAddress, nil
+			case ok:
+				return "", serrors.New("default isd-as has no daemon configured in environment file",
+					"isd-as", ia, "file", e.filepath, "available", ases,
+				)
+			default:
+				return "", serrors.New("default isd-as not found in environment file",
+					"isd-as", ia, "file", e.filepath, "available", ases,
+				)
+			}
+		}
+
+		// No defaultIA set, check how many ASes are in the file
+		switch len(e.file.ASes) {
+		case 1:
+			for ia, as := range e.file.ASes {
+				if as.DaemonAddress != "" {
+					return as.DaemonAddress, nil
+				}
+				return "", serrors.New("only isd-as in environment file has no daemon configured",
+					"isd-as", ia, "file", e.filepath,
+				)
+			}
+		case 0:
+			return "", serrors.New("no isd-as configured in environment file",
+				"file", e.filepath,
+			)
+		default:
+			return "", serrors.New("multiple ASes in environment file but no default ISD-AS set",
+				"file", e.filepath,
+				"available", ases,
+				"hint", "use --isd-as flag to select the local AS")
+		}
 	}
-	if as, ok := e.file.ASes[ia]; ok && as.DaemonAddress != "" {
-		return as.DaemonAddress
-	}
-	return defaultDaemon
+
+	// Priority 4: Default value (only if nothing is set)
+	return defaultDaemon, nil
 }
 
 // Local returns the loca IP to listen on. The value is loaded from one of the

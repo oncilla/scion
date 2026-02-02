@@ -100,7 +100,13 @@ func realMain() int {
 		DstHost: clientAddr.Host.IP.String(),
 	}
 
-	daemon, err := daemon.NewService(scionEnv.Daemon()).Connect(ctx)
+	daemonAddr, err := scionEnv.Daemon()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error resolving SCION environment:", err)
+		return 2
+	}
+
+	daemon, err := daemon.NewService(daemonAddr).Connect(ctx)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error dialing SCION Daemon:", err)
 		return 1

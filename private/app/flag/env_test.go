@@ -75,6 +75,7 @@ func TestSCIONEnvironment(t *testing.T) {
 		daemon     string
 		dispatcher string
 		local      netip.Addr
+		daemonErr  bool
 	}{
 		"no flag, no file, no env, defaults only": {
 			flags:  noFlags,
@@ -128,8 +129,115 @@ func TestSCIONEnvironment(t *testing.T) {
 			tc.env(t)
 			tc.file(t, &env)
 			require.NoError(t, env.LoadExternalVars())
-			assert.Equal(t, tc.daemon, env.Daemon())
+			daemonAddr, err := env.Daemon()
+			if tc.daemonErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tc.daemon, daemonAddr)
+			}
 			assert.Equal(t, tc.local, env.Local())
+		})
+	}
+}
+
+func TestSCIONEnvironmentMultipleASes(t *testing.T) {
+	setupFileSingleAS := func(t *testing.T, envFlags *flag.SCIONEnvironment) {
+		f, err := os.CreateTemp(t.TempDir(), "env.json")
+		require.NoError(t, err)
+		fName := f.Name()
+		t.Cleanup(func() { os.Remove(fName) })
+		e := env.SCION{
+			// No DefaultIA set
+			ASes: map[addr.IA]env.AS{
+				addr.MustParseIA("1-ff00:0:110"): {
+					DaemonAddress: "scion_single:1234",
+				},
+			},
+		}
+		require.NoError(t, json.NewEncoder(f).Encode(e))
+		require.NoError(t, f.Close())
+		envFlags.SetFilePath(fName)
+	}
+
+	setupFileMultipleASes := func(t *testing.T, envFlags *flag.SCIONEnvironment) {
+		f, err := os.CreateTemp(t.TempDir(), "env.json")
+		require.NoError(t, err)
+		fName := f.Name()
+		t.Cleanup(func() { os.Remove(fName) })
+		e := env.SCION{
+			// No DefaultIA set
+			ASes: map[addr.IA]env.AS{
+				addr.MustParseIA("1-ff00:0:110"): {
+					DaemonAddress: "scion_as1:1234",
+				},
+				addr.MustParseIA("1-ff00:0:120"): {
+					DaemonAddress: "scion_as2:1234",
+				},
+			},
+		}
+		require.NoError(t, json.NewEncoder(f).Encode(e))
+		require.NoError(t, f.Close())
+		envFlags.SetFilePath(fName)
+	}
+
+	setupFlagNonExistentAS := func(t *testing.T, fs *pflag.FlagSet) {
+		err := fs.Parse([]string{"--isd-as", "1-ff00:0:999"})
+		require.NoError(t, err)
+	}
+
+	setupFlagExistingAS := func(t *testing.T, fs *pflag.FlagSet) {
+		err := fs.Parse([]string{"--isd-as", "1-ff00:0:110"})
+		require.NoError(t, err)
+	}
+
+	noFlags := func(t *testing.T, fs *pflag.FlagSet) {
+		require.NoError(t, fs.Parse([]string{}))
+	}
+
+	testCases := map[string]struct {
+		flags     func(t *testing.T, fs *pflag.FlagSet)
+		file      func(t *testing.T, envFlags *flag.SCIONEnvironment)
+		daemon    string
+		daemonErr bool
+	}{
+		"single AS in file, no defaultIA": {
+			flags:  noFlags,
+			file:   setupFileSingleAS,
+			daemon: "scion_single:1234",
+		},
+		"multiple ASes in file, no defaultIA, error": {
+			flags:     noFlags,
+			file:      setupFileMultipleASes,
+			daemonErr: true,
+		},
+		"multiple ASes in file, --isd-as set to existing AS": {
+			flags:  setupFlagExistingAS,
+			file:   setupFileMultipleASes,
+			daemon: "scion_as1:1234",
+		},
+		"--isd-as set to non-existent AS, error": {
+			flags:     setupFlagNonExistentAS,
+			file:      setupFileMultipleASes,
+			daemonErr: true,
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			var env flag.SCIONEnvironment
+			fs := pflag.NewFlagSet("testSet", pflag.ContinueOnError)
+			env.Register(fs)
+			tc.flags(t, fs)
+			tc.file(t, &env)
+			require.NoError(t, env.LoadExternalVars())
+			daemonAddr, err := env.Daemon()
+			if tc.daemonErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tc.daemon, daemonAddr)
+			}
 		})
 	}
 }

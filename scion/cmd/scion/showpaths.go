@@ -98,7 +98,11 @@ On other errors, showpaths will exit with code 2.
 				return err
 			}
 
-			flags.cfg.Daemon = envFlags.Daemon()
+			daemonAddr, err := envFlags.Daemon()
+			if err != nil {
+				return serrors.WrapNoStack("resolving SCION environment", err)
+			}
+			flags.cfg.Daemon = daemonAddr
 			flags.cfg.Local = net.IP(envFlags.Local().AsSlice())
 			log.Debug("Resolved SCION environment flags",
 				"daemon", flags.cfg.Daemon,

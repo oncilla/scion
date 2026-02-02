@@ -70,12 +70,16 @@ func addFlags() error {
 	if err != nil {
 		return serrors.Wrap("reading scion environment", err)
 	}
+	daemonDefault, err := envFlags.Daemon()
+	if err != nil {
+		return serrors.WrapNoStack("resolving SCION environment", err)
+	}
 	// TODO(JordiSubira): Make this flag optional and consider the same case as Unspecified
 	// if it isn't explicitly set.
 	flag.Var(&Local, "local", "(Mandatory) address to listen on")
 	flag.StringVar(&Mode, "mode", ModeClient, "Run in "+ModeClient+" or "+ModeServer+" mode")
 	flag.StringVar(&Progress, "progress", "", "Socket to write progress to")
-	flag.StringVar(&daemonAddr, "sciond", envFlags.Daemon(), "SCION Daemon address")
+	flag.StringVar(&daemonAddr, "sciond", daemonDefault, "SCION Daemon address")
 	flag.IntVar(&Attempts, "attempts", 1, "Number of attempts before giving up")
 	flag.StringVar(&logConsole, "log.console", "info", "Console logging level: debug|info|error")
 	flag.StringVar(&features, "features", "",
