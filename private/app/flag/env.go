@@ -196,12 +196,14 @@ func (e *SCIONEnvironment) Daemon() (string, error) {
 
 	// Priority 3: Environment configuration file
 	if e.fileLoaded {
-		ases := make([]addr.IA, 0, len(e.file.ASes))
-		{
+		// Collect the ASes that are present in the environment file.
+		ases := func() []addr.IA {
+			ases := make([]addr.IA, 0, len(e.file.ASes))
 			for ia := range e.file.ASes {
 				ases = append(ases, ia)
 			}
 			slices.Sort(ases)
+			return ases
 		}
 
 		// Check if --isd-as flag is set
@@ -212,11 +214,11 @@ func (e *SCIONEnvironment) Daemon() (string, error) {
 				return as.DaemonAddress, nil
 			case ok:
 				return "", serrors.New("isd-as has no daemon configured in environment file",
-					"isd-as", e.ia, "file", e.filepath, "available", ases,
+					"isd-as", e.ia, "file", e.filepath, "available", ases(),
 				)
 			default:
 				return "", serrors.New("isd-as not found in environment file",
-					"isd-as", e.ia, "file", e.filepath, "available", ases,
+					"isd-as", e.ia, "file", e.filepath, "available", ases(),
 				)
 			}
 		}
@@ -229,11 +231,11 @@ func (e *SCIONEnvironment) Daemon() (string, error) {
 				return as.DaemonAddress, nil
 			case ok:
 				return "", serrors.New("default isd-as has no daemon configured in environment file",
-					"isd-as", ia, "file", e.filepath, "available", ases,
+					"isd-as", ia, "file", e.filepath, "available", ases(),
 				)
 			default:
 				return "", serrors.New("default isd-as not found in environment file",
-					"isd-as", ia, "file", e.filepath, "available", ases,
+					"isd-as", ia, "file", e.filepath, "available", ases(),
 				)
 			}
 		}
@@ -256,7 +258,7 @@ func (e *SCIONEnvironment) Daemon() (string, error) {
 		default:
 			return "", serrors.New("multiple ASes in environment file but no default ISD-AS set",
 				"file", e.filepath,
-				"available", ases,
+				"available", ases(),
 				"hint", "use --isd-as flag to select the local AS")
 		}
 	}
