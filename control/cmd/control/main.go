@@ -20,6 +20,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"net/netip"
@@ -29,15 +30,15 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
-
+	"connectrpc.com/connect"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/spf13/cobra"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
@@ -123,9 +124,7 @@ import (
 	trustmetrics "github.com/scionproto/scion/private/trust/metrics"
 )
 
-var (
-	globalCfg config.Config
-)
+var globalCfg config.Config
 
 func main() {
 	application := launcher.Application{
@@ -331,16 +330,20 @@ func realMain(ctx context.Context) error {
 		MaxCacheExpiration: globalCfg.TrustEngine.Cache.Expiration.Duration,
 		Cache:              trustengineCache,
 	}
+	squicDialer := &squic.EarlyDialerFactory{
+		Transport: quicStack.InsecureDialer.Transport,
+		TLSConfig: libconnect.AdaptClientTLS(quicStack.InsecureDialer.TLSConfig),
+		Rewriter:  dialer.Rewriter,
+	}
 	provider := trust.FetchingProvider{
 		DB: trustDB,
 		Fetcher: trusthappy.Fetcher{
 			Connect: trustconnect.Fetcher{
 				IA: topo.IA(),
-				Dialer: (&squic.EarlyDialerFactory{
-					Transport: quicStack.InsecureDialer.Transport,
-					TLSConfig: libconnect.AdaptClientTLS(quicStack.InsecureDialer.TLSConfig),
-					Rewriter:  dialer.Rewriter,
-				}).NewDialer,
+				Client: func(server net.Addr) connect.HTTPClient {
+					return libconnect.NewHTTP3Client(squicDialer.NewDialer(server))
+				},
+				BaseUrl: libconnect.BaseUrl,
 			},
 			Grpc: trustgrpc.Fetcher{
 				IA:       topo.IA(),
@@ -429,7 +432,8 @@ func realMain(ctx context.Context) error {
 			Interfaces: intfs,
 			Verifier:   verifier,
 			BeaconsHandled: func(ingressInterface uint16, neighborIA addr.IA,
-				result string) libmetrics.Counter {
+				result string,
+			) libmetrics.Counter {
 				return metrics.BeaconingReceivedTotal.With(prometheus.Labels{
 					"ingress_interface": strconv.Itoa(int(ingressInterface)),
 					prom.LabelNeighIA:   neighborIA.String(),
