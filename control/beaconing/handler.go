@@ -93,12 +93,12 @@ func (h Handler) HandleBeacon(ctx context.Context, b beacon.Beacon, peer *snet.U
 		return &InternalError{Err: err}
 	}
 	if err := h.validateASEntry(b, intf); err != nil {
-		logger.Info("Beacon validation failed", "err", err)
+		logger.Debug("Beacon validation failed", "err", err)
 		h.updateMetric(span, labels.WithResult(prom.ErrVerify), err)
 		return err
 	}
 	if err := h.verifySegment(ctx, b.Segment, peer); err != nil {
-		logger.Info("Beacon verification failed", "err", err)
+		logger.Debug("Beacon verification failed", "err", err)
 		err := serrors.Wrap("verifying beacon", err)
 		h.updateMetric(span, labels.WithResult(prom.ErrVerify), err)
 		if errors.Is(err, trust.ErrNotifyTRC) {
