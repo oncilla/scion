@@ -102,7 +102,7 @@ type ConsoleSamplingConfig struct {
 
 func (c *ConsoleSamplingConfig) InitDefaults() {
 	if c.Initial == nil {
-		c.Initial = new(100)
+		c.Initial = new(10)
 	}
 	if c.Thereafter == nil {
 		c.Thereafter = new(100)
